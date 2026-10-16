@@ -199,3 +199,14 @@ Belum selesai: bukti foto/file, notifikasi otomatis, pagination, indikator waktu
 - Migrasi 011 menambah sop_templates dan referensi cabang/jabatan. UI mengikuti milk-glass dengan aksen SOP hijau dan label kritis merah yang tetap memakai teks.
 
 Belum selesai FR-07/FR-08: jadwal harian/hari tertentu, penerima eksplisit, generation instance idempotent, unassigned/notifikasi, pengisian draft server, submit/review, auto-accept runtime, pengecualian dan pembatalan instance. Foto dan modul kendala juga belum tersedia. Publikasi template tidak menghasilkan tugas atau data kepatuhan staf. Pemeriksaan visual/interaksi browser masih diperlukan. Video tetap hanya tautan YouTube pada materi pelatihan.
+
+### 4B — Jadwal SOP dan pembangkitan tugas melalui API
+
+- OWNER/ADMIN dapat membuat jadwal dengan versi SOP terbit, satu cabang, penerima staf eksplisit (maksimal 500), rentang tanggal maksimal 366 hari, dan hari ISO 1–7. Semua hari berarti harian.
+- Jadwal menyimpan snapshot template/checksum, penerima, nama cabang dan zona waktu. Versi template yang kemudian diarsipkan tetap berlaku bagi jadwal yang sudah dibuat.
+- Pembangkitan manual per tanggal menggunakan transaksi dan kunci jadwal; ledger serta batas unik database menjaga pengulangan/concurrency tidak menggandakan tugas. Snapshot tugas dan ledger tidak dapat diubah/dihapus.
+- Waktu mulai/tenggat dihitung PostgreSQL dari tanggal lokal cabang; shift lintas tengah malam terikat tanggal mulai. Tugas tetap `open`, dengan flag `overdue` dari jam server.
+- Kelayakan penerima diperiksa ulang (aktif, STAFF, cabang/jabatan sesuai). Penerima yang tidak memenuhi syarat dicatat dalam hasil run; bila tidak ada penerima, dibuat satu penanda `unassigned`. Pengulangan mengembalikan hasil semula, termasuk bila kelayakan penerima berubah sesudahnya.
+- Daftar tugas dibatasi tenant: staf hanya miliknya, supervisor hanya cabang grant, OWNER/ADMIN seluruh tenant (100 terbaru berdasarkan tenggat).
+- Validasi: 62 integration tests, termasuk lintas tenant, peran, konkurensi, shift malam, snapshot immutable dan unassigned.
+- Batas tahap: API saja; UI jadwal/daftar tugas, worker otomatis, penghentian/revisi jadwal, penugasan ulang, notifikasi, jawaban draft, submit/review dan issue belum tersedia. Tidak ada tugas yang dianggap selesai atau diterima otomatis.

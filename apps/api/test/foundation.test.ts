@@ -2492,3 +2492,114 @@ test('published SOP versions and target references are immutable while revisions
     ),
   );
 });
+
+test('SOP schedules validate recipients and generate immutable overnight instances idempotently', async () => {
+  const payload = {
+    template_version_id: sopNightId,
+    branch_id: branches[0],
+    start_date: '2026-10-16',
+    end_date: '2026-10-31',
+    weekdays: [5],
+    assignee_ids: [assignmentLearner],
+  };
+  await post('sop-schedules', learnerCookie).send(payload).expect(403);
+  await post('sop-schedules', cookies[1]).send(payload).expect(409);
+  await post('sop-schedules', cookies[0])
+    .send({ ...payload, assignee_ids: [members[0]] })
+    .expect(409);
+  await post('sop-schedules', cookies[0])
+    .send({ ...payload, start_date: '2026-02-30' })
+    .expect(422);
+  const schedule = (await post('sop-schedules', cookies[0]).send(payload).expect(201)).body;
+  await post(`sop-schedules/${schedule.id}/generate`, cookies[1])
+    .send({ local_date: '2026-10-16' })
+    .expect(404);
+  await post(`sop-schedules/${schedule.id}/generate`, cookies[0])
+    .send({ local_date: '2026-10-17' })
+    .expect(409);
+  const generated = await Promise.all(
+    [1, 2].map(() =>
+      post(`sop-schedules/${schedule.id}/generate`, cookies[0]).send({ local_date: '2026-10-16' }),
+    ),
+  );
+  assert.ok(generated.every((r) => r.status === 201));
+  assert.deepEqual(generated[0].body, generated[1].body);
+  assert.equal(generated[0].body.assigned_count, 1);
+  const instance = (await get('sop-instances', learnerCookie)).body.find(
+    (r: any) => r.id === generated[0].body.instance_ids[0],
+  );
+  assert.ok(instance);
+  assert.equal(new Date(instance.starts_at).toISOString(), '2026-10-16T15:00:00.000Z');
+  assert.equal(new Date(instance.due_at).toISOString(), '2026-10-16T23:00:00.000Z');
+  assert.equal(instance.snapshot.template.id, sopNightId);
+  assert.ok(!(await get('sop-instances', cookies[1])).body.some((r: any) => r.id === instance.id));
+  assert.ok(
+    (await get('sop-instances', supervisorCookie)).body.some((r: any) => r.id === instance.id),
+  );
+  await assert.rejects(
+    db.query('UPDATE sop_instances SET snapshot=$1 WHERE id=$2', ['{}', instance.id]),
+  );
+  await assert.rejects(db.query('DELETE FROM sop_schedules WHERE id=$1', [schedule.id]));
+  await post(`sop-templates/${sopNightId}/archive`, cookies[0]).send({ confirm: true }).expect(201);
+  assert.equal(
+    (
+      await post(`sop-schedules/${schedule.id}/generate`, cookies[0])
+        .send({ local_date: '2026-10-23' })
+        .expect(201)
+    ).body.assigned_count,
+    1,
+  );
+});
+test('SOP generation records unassigned and freezes each run when recipients become ineligible', async () => {
+  const template = (
+    await post('sop-templates', cookies[0])
+      .send({ ...sopPayload(), title: 'Jadwal kosong' })
+      .expect(201)
+  ).body.id;
+  await post(`sop-templates/${template}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const payload = {
+    template_version_id: template,
+    branch_id: branches[0],
+    start_date: '2026-10-16',
+    end_date: '2026-10-18',
+    weekdays: [1, 2, 3, 4, 5, 6, 7],
+    assignee_ids: [assignmentLearner],
+  };
+  const schedule = (await post('sop-schedules', cookies[0]).send(payload).expect(201)).body;
+  await db.query('UPDATE memberships SET active=false WHERE id=$1', [assignmentLearner]);
+  const result = (
+    await post(`sop-schedules/${schedule.id}/generate`, cookies[0])
+      .send({ local_date: '2026-10-16' })
+      .expect(201)
+  ).body;
+  assert.equal(result.unassigned, true);
+  assert.deepEqual(result.skipped_assignee_ids, [assignmentLearner]);
+  await db.query('UPDATE memberships SET active=true WHERE id=$1', [assignmentLearner]);
+  assert.deepEqual(
+    (
+      await post(`sop-schedules/${schedule.id}/generate`, cookies[0])
+        .send({ local_date: '2026-10-16' })
+        .expect(201)
+    ).body,
+    result,
+  );
+  const row = (await get('sop-instances', cookies[0])).body.find(
+    (r: any) => r.id === result.instance_ids[0],
+  );
+  assert.equal(row.status, 'unassigned');
+  assert.equal(row.assignee_id, null);
+  assert.ok(!(await get('sop-instances', learnerCookie)).body.some((r: any) => r.id === row.id));
+  const empty = (
+    await post('sop-schedules', cookies[0])
+      .send({ ...payload, assignee_ids: [] })
+      .expect(201)
+  ).body;
+  assert.equal(
+    (
+      await post(`sop-schedules/${empty.id}/generate`, cookies[0])
+        .send({ local_date: '2026-10-17' })
+        .expect(201)
+    ).body.unassigned,
+    true,
+  );
+});

@@ -241,3 +241,14 @@ Penanda kewajiban kendala tersedia untuk ketidaksesuaian ya/tidak atau angka seb
 Simpan draft lalu tinjau detail sebelum **Terbitkan template**. Revisi selalu menghasilkan draft versi baru dengan referensi cabang/jabatan dan nomor item yang ditentukan server. Arsip menjaga versi lama, bukan menghapusnya. Daftar menampilkan maksimal 100 versi template terbaru, sedangkan pemilih cabang/jabatan mengambil hingga 500 data yang tersedia.
 
 Tahap ini belum membuat jadwal, penerima eksplisit, instance harian, draft jawaban, submit/review atau penerimaan otomatis. Template dan konfigurasi target saja tidak boleh dilaporkan sebagai kepatuhan SOP staf.
+
+### Jadwal SOP melalui API
+
+Gunakan sesi OWNER/ADMIN dan header Origin aplikasi untuk endpoint mutasi:
+
+- `GET /api/v1/sop-schedules`: 100 jadwal terbaru tenant.
+- `POST /api/v1/sop-schedules`: `{template_version_id, branch_id, start_date, end_date, weekdays, assignee_ids}`. Tanggal ISO `YYYY-MM-DD`; weekdays ISO Senin=1 hingga Minggu=7, semua hari untuk harian. Array penerima boleh kosong; rentang maksimal 366 hari. Pilih versi terbit dan staf aktif dengan cabang/jabatan sesuai target template.
+- `POST /api/v1/sop-schedules/:id/generate`: `{local_date}`. Pemanggilan manual, hanya tanggal dalam rentang/hari jadwal; hasil berisi `instance_ids`, `assigned_count`, `unassigned`, `skipped_assignee_ids`. Pengulangan mengembalikan hasil run semula. Tidak ada cron/worker otomatis pada tahap ini.
+- `GET /api/v1/sop-instances`: 100 tugas terbaru menurut tenggat; OWNER/ADMIN tenant, supervisor cabang grant, staf miliknya. Snapshot memuat versi/checksum template dan zona waktu; starts_at/due_at UTC, local_date tanggal mulai shift cabang. Penanda unassigned terlihat pada admin/supervisor, bukan staf.
+
+Jadwal merupakan snapshot immutable. Arsip template tidak menghentikan jadwal yang sudah dibuat. Belum ada endpoint penghentian jadwal atau penugasan ulang; buat jadwal dengan rentang tanggal yang terkendali. Kelayakan penerima diperiksa ulang saat run, hasilnya dibekukan sesudah run pertama. Belum tersedia UI, notifikasi, pengisian maupun review SOP.
