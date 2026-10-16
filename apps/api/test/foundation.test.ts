@@ -1822,3 +1822,289 @@ test('practice signing rejects assignments before their local start date', async
     0,
   );
 });
+
+let requestTask = '',
+  pendingRequest = '',
+  requestGrade: any,
+  firstRequestPayload: any;
+test('staff practice requests require eligibility, ownership and idempotent pending submission', async () => {
+  const rubric = (await post('practice-rubrics', cookies[0]).send(rubricContent)).body.id;
+  await post(`practice-rubrics/${rubric}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const module = (await post('learning', cookies[0]).send(learningContent)).body.id;
+  await post(`learning/${module}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const path = (
+    await post('onboarding-paths', cookies[0]).send({
+      title: 'Pengajuan staf',
+      description: 'Praktik dan peninjauan',
+      steps: [{ version_id: module, rubric_version_id: rubric, due_days: 1 }],
+    })
+  ).body.id;
+  await post(`onboarding-paths/${path}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const batch = (
+    await post('onboarding-assignments/preview', cookies[0]).send({
+      ...assignmentPayload(),
+      path_version_id: path,
+      start_date: '2020-01-01',
+    })
+  ).body.id;
+  requestTask = (
+    await post(`onboarding-assignments/batches/${batch}/commit`, cookies[0]).send({ confirm: true })
+  ).body.assignment_ids[0];
+  firstRequestPayload = {
+    step_position: 1,
+    kind: 'practice',
+    reason: 'Saya siap menunjukkan praktik sesuai rubrik tugas',
+    idempotency_key: randomUUID(),
+  };
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+    .send(firstRequestPayload)
+    .expect(409);
+  await post(`learning/${module}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [0] })
+    .expect(201);
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, cookies[0])
+    .send(firstRequestPayload)
+    .expect(404);
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, supervisorCookie)
+    .send(firstRequestPayload)
+    .expect(404);
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, cookies[1])
+    .send(firstRequestPayload)
+    .expect(404);
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+    .send({ ...firstRequestPayload, reason: 'short' })
+    .expect(422);
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+    .send({ ...firstRequestPayload, kind: 'review' })
+    .expect(409);
+  const submissions = await Promise.all(
+    [1, 2].map(() =>
+      post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie).send(
+        firstRequestPayload,
+      ),
+    ),
+  );
+  assert.ok(submissions.every((r) => r.status === 201));
+  assert.deepEqual(submissions[0].body, submissions[1].body);
+  pendingRequest = submissions[0].body.id;
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+    .send({ ...firstRequestPayload, idempotency_key: randomUUID() })
+    .expect(409);
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+    .send({ ...firstRequestPayload, reason: 'Isi berbeda pada kunci yang sudah digunakan' })
+    .expect(409);
+  const progress = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (t: any) => t.id === requestTask,
+  );
+  assert.equal(progress.progress.steps[0].practice_request.status, 'pending');
+  assert.equal(progress.progress.steps[0].practice_status, 'not_assessed');
+  assert.equal(progress.status, 'awaiting_assessment');
+  await get('onboarding-assignments/practice-queue', learnerCookie).expect(403);
+  assert.ok(
+    (
+      await get('onboarding-assignments/practice-queue', supervisorCookie).expect(200)
+    ).body.items.some((t: any) => t.id === requestTask),
+  );
+  assert.ok(
+    !(await get('onboarding-assignments/practice-queue', cookies[1])).body.items.some(
+      (t: any) => t.id === requestTask,
+    ),
+  );
+  const otherBranch = (
+    await db.query("SELECT id FROM branches WHERE tenant_id=$1 AND code='ASSIGN_WITA'", [
+      tenants[0],
+    ])
+  ).rows[0].id;
+  await db.query('UPDATE memberships SET branch_id=$1 WHERE id=$2', [
+    otherBranch,
+    assignmentLearner,
+  ]);
+  await get(`onboarding-assignments/${requestTask}/practice-requests`, supervisorCookie).expect(
+    404,
+  );
+  assert.ok(
+    !(await get('onboarding-assignments/practice-queue', supervisorCookie)).body.items.some(
+      (t: any) => t.id === requestTask,
+    ),
+  );
+  await db.query('UPDATE memberships SET branch_id=$1 WHERE id=$2', [
+    branches[0],
+    assignmentLearner,
+  ]);
+});
+test('new observations answer requests explicitly while replay cannot consume a later request', async () => {
+  requestGrade = {
+    step_position: 1,
+    answers: practiceAnswers(false),
+    comment: 'Observasi awal menemukan item kritis perlu latihan',
+    training_instructions: 'Ulangi pemeriksaan area kerja yang aman',
+    idempotency_key: randomUUID(),
+  };
+  const first = (
+    await post(`onboarding-assignments/${requestTask}/assessments`, supervisorCookie)
+      .send(requestGrade)
+      .expect(201)
+  ).body;
+  assert.equal(first.request_id, pendingRequest);
+  let history = (
+    await get(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+  ).body.items;
+  assert.equal(history[0].status, 'answered');
+  assert.equal(history[0].answer_assessment_id, first.id);
+  assert.equal('input_hash' in history[0], false);
+  assert.ok(
+    !(await get('onboarding-assignments/practice-queue', supervisorCookie)).body.items.some(
+      (t: any) => t.id === requestTask,
+    ),
+  );
+  const review = {
+    step_position: 1,
+    kind: 'review',
+    reason: 'Saya meminta peninjauan setelah mengulang latihan',
+    based_on: first.id,
+    idempotency_key: randomUUID(),
+  };
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+    .send({ ...review, based_on: null })
+    .expect(409);
+  const reviewResult = (
+    await post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+      .send(review)
+      .expect(201)
+  ).body;
+  await post(`onboarding-assignments/${requestTask}/assessments`, supervisorCookie)
+    .send(requestGrade)
+    .expect(201);
+  history = (await get(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie))
+    .body.items;
+  assert.equal(history.find((r: any) => r.id === reviewResult.id).status, 'pending');
+  const corrected = {
+    ...requestGrade,
+    answers: practiceAnswers(true),
+    training_instructions: '',
+    supersedes: first.id,
+    correction_reason: 'Peninjauan hasil setelah observasi praktik ulang',
+    idempotency_key: randomUUID(),
+  };
+  const answer = (
+    await post(`onboarding-assignments/${requestTask}/assessments`, supervisorCookie)
+      .send(corrected)
+      .expect(201)
+  ).body;
+  assert.equal(answer.request_id, reviewResult.id);
+  assert.equal(answer.outcome, 'competent');
+  assert.deepEqual(
+    (
+      await post(`onboarding-assignments/${requestTask}/assessments`, supervisorCookie)
+        .send(corrected)
+        .expect(201)
+    ).body,
+    answer,
+  );
+  const task = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (t: any) => t.id === requestTask,
+  );
+  assert.equal(task.status, 'completed');
+  assert.equal(task.progress.steps[0].practice_request.status, 'answered');
+});
+test('pending reviews preserve competence and cancellation preserves immutable request history', async () => {
+  const task = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (t: any) => t.id === requestTask,
+  );
+  const payload = {
+    step_position: 1,
+    kind: 'review',
+    reason: 'Mohon penjelasan dan peninjauan hasil kompetensi',
+    based_on: task.progress.steps[0].latest_assessment_id,
+    idempotency_key: randomUUID(),
+  };
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+    .send({ ...payload, kind: 'practice' })
+    .expect(409);
+  const payloads = [payload, { ...payload, idempotency_key: randomUUID() }];
+  const results = await Promise.all(
+    payloads.map((input) =>
+      post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie).send(input),
+    ),
+  );
+  assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
+  const winner = results.findIndex((r) => r.status === 201),
+    id = results[winner].body.id;
+  const pending = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (t: any) => t.id === requestTask,
+  );
+  assert.equal(pending.status, 'completed');
+  assert.equal(pending.progress.steps[0].practice_status, 'competent');
+  assert.equal(pending.progress.steps[0].practice_request.status, 'pending');
+  await assert.rejects(
+    db.query("UPDATE practice_requests SET reason='Changed reason' WHERE id=$1", [id]),
+  );
+  await assert.rejects(db.query('DELETE FROM practice_requests WHERE id=$1', [id]));
+  await post(`onboarding-assignments/${requestTask}/cancel`, cookies[0])
+    .send({ reason: 'Penghentian tugas dengan histori tetap disimpan' })
+    .expect(201);
+  const history = (
+    await get(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+  ).body.items;
+  assert.equal(history.find((r: any) => r.id === id).status, 'cancelled');
+  assert.equal(history.length, 3);
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+    .send(payloads[winner])
+    .expect(201);
+  await post(`onboarding-assignments/${requestTask}/practice-requests`, learnerCookie)
+    .send({ ...payload, idempotency_key: randomUUID() })
+    .expect(409);
+  assert.ok(
+    !(await get('onboarding-assignments/practice-queue', supervisorCookie)).body.items.some(
+      (t: any) => t.id === requestTask,
+    ),
+  );
+  assert.ok(
+    (await get('audit-events', cookies[0])).body.some(
+      (e: any) => e.action === 'practice_request.submitted',
+    ),
+  );
+});
+test('practice requests reject future starts, absent rubrics and unmet practical prerequisites', async () => {
+  const future = (
+    await db.query(
+      "SELECT id FROM onboarding_assignments WHERE tenant_id=$1 AND membership_id=$2 AND start_date='2099-01-01' LIMIT 1",
+      [tenants[0], assignmentLearner],
+    )
+  ).rows[0].id;
+  const payload = {
+    step_position: 1,
+    kind: 'practice',
+    reason: 'Saya siap melakukan observasi praktik',
+    idempotency_key: randomUUID(),
+  };
+  await post(`onboarding-assignments/${future}/practice-requests`, learnerCookie)
+    .send(payload)
+    .expect(409);
+  const legacy = (
+    await db.query(
+      "SELECT id FROM onboarding_assignments WHERE tenant_id=$1 AND membership_id=$2 AND status='assigned' AND snapshot->'steps'->0->'practice_rubric' IS NULL LIMIT 1",
+      [tenants[0], assignmentLearner],
+    )
+  ).rows[0].id;
+  await post(`onboarding-assignments/${legacy}/practice-requests`, learnerCookie)
+    .send(payload)
+    .expect(409);
+  const sequential = (
+    await db.query(
+      "SELECT id FROM onboarding_assignments WHERE tenant_id=$1 AND membership_id=$2 AND snapshot->>'title'='Praktik berurutan' LIMIT 1",
+      [tenants[0], assignmentLearner],
+    )
+  ).rows[0].id;
+  const detail = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (t: any) => t.id === sequential,
+  );
+  await post(`onboarding-assignments/${sequential}/practice-requests`, learnerCookie)
+    .send({
+      ...payload,
+      kind: 'review',
+      step_position: 2,
+      based_on: detail.progress.steps[1].latest_assessment_id,
+    })
+    .expect(409);
+});

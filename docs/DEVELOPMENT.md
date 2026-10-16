@@ -208,4 +208,14 @@ Untuk penilaian ulang atau koreksi, gunakan hasil terbaru sebagai dasar dan isi 
 
 **Muat riwayat observasi** tersedia bagi staf pemilik tugas dan pengelola dalam scope; tampil maksimal 100 record terbaru. Seluruh teori dan praktik kompeten menghasilkan **Selesai**. Koreksi menjadi needs_practice dapat membuka tugas kembali dan memunculkan lewat tenggat. Arsip rubrik tidak mengubah kriteria tugas lama, sehingga snapshot tersebut tetap dapat dinilai. Tugas tanpa rubrik belum dapat dinilai dan tugas cancelled menolak penilaian baru.
 
-Belum tersedia pengajuan praktik/review oleh staf, bukti foto/file, notifikasi atau pembatasan akses kuis sesuai prasyarat. Pengesahan ini merupakan satu langkah simpan hasil yang sudah final; belum ada draft observasi terpisah.
+Pengajuan praktik/review staf tersedia sesuai panduan di bawah. Bukti foto/file, notifikasi dan pembatasan akses kuis sesuai prasyarat belum tersedia. Pengesahan ini merupakan satu langkah simpan hasil yang sudah final; belum ada draft observasi terpisah.
+
+### Mengajukan praktik dan peninjauan hasil
+
+Sebagai pemilik tugas, buka **Tugas onboarding**, pilih langkah yang memiliki rubrik dan teori lulus, lalu **Ajukan praktik / peninjauan hasil**. Tanggal mulai harus sudah tiba dan praktik prasyarat harus kompeten. Pilih **Siap observasi / praktik ulang** untuk observasi awal atau setelah latihan, atau **Minta peninjauan hasil terakhir** jika sudah ada observasi. Sertakan alasan/kesiapan minimal 10 karakter. Praktik yang sudah kompeten hanya menerima jenis peninjauan, bukan pengajuan praktik awal lagi.
+
+Pengajuan menyimpan referensi hasil terakhir. Jika penilai mengubah hasil saat form terbuka, server meminta muat ulang agar pengajuan tidak merujuk hasil usang. Satu langkah hanya boleh memiliki satu pengajuan pending. Pengiriman ulang dengan key yang sama mengambil hasil pengajuan semula; isi berbeda ditolak. Pengajuan belum dapat diedit atau ditarik kembali. Gunakan **Muat riwayat pengajuan** untuk melihat sampai 100 record terbaru.
+
+Sebagai SUPERVISOR atau OWNER/ADMIN, aktifkan **Hanya pengajuan menunggu**. Antrean mengambil maksimal 100 tugas tertua yang memiliki pengajuan pending dalam scope saat ini, termasuk tugas completed yang meminta review. Pengesahan observasi baru pada langkah yang sama otomatis ditautkan ke pengajuan yang menunggu. Replay observasi lama tidak akan menjawab pengajuan baru. Observasi tetap boleh dilakukan tanpa pengajuan staf bila proses operasional memerlukannya.
+
+Review pending tidak membatalkan kompetensi atau membuka kembali tugas completed dengan sendirinya. Hanya observasi koreksi yang dapat mengubah hasil praktik dan progres. Pembatalan tugas menghentikan pengajuan pending tanpa menghapus histori; pengajuan yang sudah dijawab tetap menyimpan ID observasi jawabannya. Belum ada notifikasi otomatis, SLA, komentar bolak-balik atau penugasan review ke penilai lain secara otomatis.

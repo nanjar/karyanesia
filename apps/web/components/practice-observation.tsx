@@ -147,6 +147,7 @@ type Assessment = {
   correction_reason: string;
   assessor_name: string;
   created_at: string;
+  request_id: string | null;
   answers: { position: number; passed: boolean }[];
 };
 export function PracticeHistory({
@@ -206,6 +207,7 @@ export function PracticeHistory({
                   </li>
                 ))}
               </ul>
+              {item.request_id && <p>Menjawab pengajuan {item.request_id}</p>}
               {item.supersedes && <small>Menggantikan hasil {item.supersedes}</small>}
             </details>
           ))}

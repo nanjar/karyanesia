@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../app/api';
 import { PracticeObservation, PracticeHistory } from './practice-observation';
+import { PracticeRequest, PracticeRequestHistory, RequestState } from './practice-request';
 import { LearningPanel } from './learning-panel';
 type Assignment = {
   id: string;
@@ -17,6 +18,7 @@ type Assignment = {
       best_score: number | null;
       practice_status: string;
       latest_assessment_id: string | null;
+      practice_request: RequestState | null;
       module_available: boolean;
       overdue: boolean;
     }[];
@@ -73,13 +75,20 @@ export function OnboardingAssignmentsPanel({
   const [items, setItems] = useState<Assignment[]>([]),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(''),
-    [module, setModule] = useState<string | null>(null);
+    [module, setModule] = useState<string | null>(null),
+    [onlyPending, setOnlyPending] = useState(false);
   async function load() {
-    setItems((await api<{ items: Assignment[] }>('onboarding-assignments')).items);
+    setItems(
+      (
+        await api<{ items: Assignment[] }>(
+          onlyPending ? 'onboarding-assignments/practice-queue' : 'onboarding-assignments',
+        )
+      ).items,
+    );
   }
   useEffect(() => {
     void load().catch(onError);
-  }, []);
+  }, [onlyPending]);
   return (
     <section className="learning-panel">
       <div className="alert">
@@ -104,10 +113,25 @@ export function OnboardingAssignmentsPanel({
       )}
       <section className="panel">
         <h2>Tugas onboarding</h2>
+        {canAssess && (
+          <label className="learning-option">
+            <input
+              type="checkbox"
+              checked={onlyPending}
+              disabled={busy}
+              onChange={(e) => setOnlyPending(e.target.checked)}
+            />
+            Hanya pengajuan menunggu (maksimal 100 tugas)
+          </label>
+        )}
         <button className="secondary" disabled={busy} onClick={() => void load().catch(onError)}>
           Perbarui tugas
         </button>
-        <p>Menampilkan maksimal 100 tugas terbaru sesuai akses Anda.</p>
+        <p>
+          {onlyPending
+            ? 'Antrean maksimal 100 tugas tertua yang memiliki pengajuan menunggu.'
+            : 'Menampilkan maksimal 100 tugas terbaru sesuai akses Anda.'}
+        </p>
         {!items.length && <p>Belum ada tugas onboarding.</p>}
         {items.map((item) => (
           <details className="assignment-card" key={item.id}>
@@ -191,6 +215,45 @@ export function OnboardingAssignmentsPanel({
                       ? ` · Nilai terbaik ${item.progress.steps[i].best_score}%`
                       : ''}
                   </p>
+                  {item.progress.steps[i].practice_request && (
+                    <p className="alert">
+                      Pengajuan{' '}
+                      {item.progress.steps[i].practice_request!.kind === 'review'
+                        ? 'peninjauan'
+                        : 'praktik'}{' '}
+                      ·{' '}
+                      {
+                        (
+                          {
+                            pending: 'Menunggu penilai',
+                            answered: 'Dijawab observasi',
+                            cancelled: 'Tugas dibatalkan',
+                          } as Record<string, string>
+                        )[item.progress.steps[i].practice_request!.status]
+                      }
+                      : {item.progress.steps[i].practice_request!.reason}
+                    </p>
+                  )}
+                  {item.membership_id === actorId &&
+                    item.status !== 'cancelled' &&
+                    s.practice_rubric &&
+                    item.progress.steps[i].theory_status === 'passed' &&
+                    (!s.prerequisite ||
+                      item.progress.steps[s.prerequisite - 1].practice_status === 'competent') &&
+                    item.progress.steps[i].practice_request?.status !== 'pending' && (
+                      <PracticeRequest
+                        key={`${item.progress.steps[i].latest_assessment_id ?? 'none'}-${item.progress.steps[i].practice_request?.id ?? 'none'}`}
+                        assignmentId={item.id}
+                        position={s.position}
+                        latestId={item.progress.steps[i].latest_assessment_id}
+                        competent={item.progress.steps[i].practice_status === 'competent'}
+                        onError={onError}
+                        onSaved={async () => {
+                          setNotice('Pengajuan tersimpan dan menunggu penilai.');
+                          await load();
+                        }}
+                      />
+                    )}
                   {canAssess &&
                     item.membership_id !== actorId &&
                     item.status !== 'cancelled' &&
@@ -232,6 +295,7 @@ export function OnboardingAssignmentsPanel({
               ))}
             </ol>
             <PracticeHistory assignmentId={item.id} onError={onError} />
+            <PracticeRequestHistory assignmentId={item.id} onError={onError} />
             {admin && item.status !== 'cancelled' && (
               <form
                 className="learning-editor"

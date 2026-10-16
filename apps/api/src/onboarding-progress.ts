@@ -38,11 +38,19 @@ export async function assignmentProgress(db: Executor, tenant: string, assignmen
     )
   ).rows;
   const practice = new Map(assessments.map((r) => [r.assignment_id + ':' + r.step_position, r]));
+  const requests = (
+    await db.query(
+      `SELECT DISTINCT ON (r.assignment_id,r.step_position) r.id,r.assignment_id,r.step_position,r.kind,r.reason,r.sequence,r.created_at,p.id AS answer_assessment_id FROM practice_requests r LEFT JOIN practice_assessments p ON p.tenant_id=r.tenant_id AND p.request_id=r.id WHERE r.tenant_id=$1 AND r.assignment_id=ANY($2::uuid[]) ORDER BY r.assignment_id,r.step_position,r.sequence DESC`,
+      [tenant, assignments.map((a) => a.id)],
+    )
+  ).rows;
+  const latestRequest = new Map(requests.map((r) => [r.assignment_id + ':' + r.step_position, r]));
   return assignments.map((a) => {
     const steps = a.snapshot.steps.map((s: any) => {
       const result = index.get(a.id + ':' + s.version_id);
       const observation = practice.get(a.id + ':' + s.position);
       const competent = observation?.outcome === 'competent';
+      const request = latestRequest.get(a.id + ':' + s.position);
       return {
         position: s.position,
         version_id: s.version_id,
@@ -53,6 +61,21 @@ export async function assignmentProgress(db: Executor, tenant: string, assignmen
         practice_status: observation?.outcome ?? 'not_assessed',
         latest_assessment_id: observation?.id ?? null,
         assessment_sequence: observation?.sequence ?? 0,
+        practice_request: request
+          ? {
+              id: request.id,
+              kind: request.kind,
+              reason: request.reason,
+              sequence: request.sequence,
+              created_at: request.created_at,
+              status: request.answer_assessment_id
+                ? 'answered'
+                : a.status === 'cancelled'
+                  ? 'cancelled'
+                  : 'pending',
+              answer_assessment_id: request.answer_assessment_id,
+            }
+          : null,
         module_available: availability.get(s.version_id) === true,
         overdue:
           a.status !== 'cancelled' &&

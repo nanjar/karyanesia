@@ -432,7 +432,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
           <span className="nav-heading">TAHAP BERIKUTNYA</span>
           <span>
             <GraduationCap size={18} />
-            Bukti & permintaan review
+            Bukti foto / file
           </span>
           <span>
             <ClipboardCheck size={18} />

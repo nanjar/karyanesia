@@ -31,7 +31,12 @@ const schema = z.strictObject({
   supersedes: z.uuid().nullable().default(null),
   idempotency_key: z.uuid(),
 });
-async function scoped(db: Executor, req: ApiRequest, id: string, write = false) {
+export async function scopedPracticeAssignment(
+  db: Executor,
+  req: ApiRequest,
+  id: string,
+  write = false,
+) {
   const a = req.actor;
   const row = (
     await db.query(
@@ -63,11 +68,11 @@ export class PracticeAssessmentsController {
   constructor(@Inject(Database) private db: Database) {}
   @Get(':id/assessments') async history(@Req() req: ApiRequest, @Param('id') raw: string) {
     const id = z.uuid().parse(raw);
-    await scoped(this.db, req, id);
+    await scopedPracticeAssignment(this.db, req, id);
     return {
       items: (
         await this.db.query(
-          `SELECT p.id,p.step_position,p.rubric_version_id,p.sequence,p.supersedes,p.answers,p.comment,p.training_instructions,p.correction_reason,p.outcome,p.created_at,u.full_name AS assessor_name FROM practice_assessments p JOIN memberships m ON m.tenant_id=p.tenant_id AND m.id=p.assessor_id JOIN users u ON u.id=m.user_id WHERE p.tenant_id=$1 AND p.assignment_id=$2 ORDER BY p.created_at DESC,p.sequence DESC,p.id LIMIT 100`,
+          `SELECT p.id,p.step_position,p.rubric_version_id,p.sequence,p.supersedes,p.answers,p.comment,p.training_instructions,p.correction_reason,p.outcome,p.request_id,p.created_at,u.full_name AS assessor_name FROM practice_assessments p JOIN memberships m ON m.tenant_id=p.tenant_id AND m.id=p.assessor_id JOIN users u ON u.id=m.user_id WHERE p.tenant_id=$1 AND p.assignment_id=$2 ORDER BY p.created_at DESC,p.sequence DESC,p.id LIMIT 100`,
           [req.actor.tenant_id, id],
         )
       ).rows,
@@ -85,12 +90,12 @@ export class PracticeAssessmentsController {
       input = schema.parse(body),
       hash = digest(id + ':' + JSON.stringify(input));
     return this.db.transaction(async (db) => {
-      const task = await scoped(db, req, id, true);
+      const task = await scopedPracticeAssignment(db, req, id, true);
       if (task.membership_id === a.id)
         throw new ForbiddenException('Tidak boleh menilai diri sendiri.');
       const previousKey = (
         await db.query(
-          'SELECT id,sequence,outcome,supersedes,rubric_version_id,input_hash FROM practice_assessments WHERE tenant_id=$1 AND assessor_id=$2 AND idempotency_key=$3',
+          'SELECT id,sequence,outcome,supersedes,rubric_version_id,request_id,input_hash FROM practice_assessments WHERE tenant_id=$1 AND assessor_id=$2 AND idempotency_key=$3',
           [a.tenant_id, a.id, input.idempotency_key],
         )
       ).rows[0];
@@ -149,15 +154,22 @@ export class PracticeAssessmentsController {
         throw new ConflictException(
           'Hasil belum kompeten wajib menyertakan arahan latihan minimal 10 karakter.',
         );
+      const pending = (
+        await db.query(
+          'SELECT r.id FROM practice_requests r LEFT JOIN practice_assessments p ON p.tenant_id=r.tenant_id AND p.request_id=r.id WHERE r.tenant_id=$1 AND r.assignment_id=$2 AND r.step_position=$3 AND p.id IS NULL ORDER BY r.sequence DESC LIMIT 1',
+          [a.tenant_id, id, input.step_position],
+        )
+      ).rows[0];
       const result = {
         id: randomUUID(),
         sequence: (old?.sequence ?? 0) + 1,
         outcome,
         supersedes: input.supersedes,
         rubric_version_id: rubric.id,
+        request_id: pending?.id ?? null,
       };
       await db.query(
-        'INSERT INTO practice_assessments(id,tenant_id,assignment_id,membership_id,assessor_id,step_position,rubric_version_id,sequence,supersedes,answers,comment,training_instructions,correction_reason,outcome,idempotency_key,input_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)',
+        'INSERT INTO practice_assessments(id,tenant_id,assignment_id,membership_id,assessor_id,step_position,rubric_version_id,sequence,supersedes,answers,comment,training_instructions,correction_reason,outcome,idempotency_key,input_hash,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)',
         [
           result.id,
           a.tenant_id,
@@ -175,6 +187,7 @@ export class PracticeAssessmentsController {
           outcome,
           input.idempotency_key,
           hash,
+          result.request_id,
         ],
       );
       await audit(db, a, req.correlationId, 'practice_assessment.signed', result.id, {
@@ -183,6 +196,7 @@ export class PracticeAssessmentsController {
         outcome,
         supersedes: input.supersedes,
         rubric_version_id: rubric.id,
+        request_id: result.request_id,
       });
       return result;
     });
