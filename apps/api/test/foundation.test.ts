@@ -700,3 +700,29 @@ test('concurrent theory submissions preserve the cap and archive preserves repla
     .expect(201);
   assert.deepEqual(replay.body, results[successful].body);
 });
+
+test('learning videos accept only YouTube HTTPS URLs and persist canonical links', async () => {
+  for (const video_url of [
+    'https://youtube.com.evil.test/watch?v=dQw4w9WgXcQ',
+    'https://example.com/a.mp4',
+    'http://youtu.be/dQw4w9WgXcQ',
+    'https://youtube.com/watch?v=bad',
+    'https://user:pass@youtube.com/watch?v=dQw4w9WgXcQ',
+  ]) {
+    await post('learning', cookies[0])
+      .send({ ...learningContent, video_url })
+      .expect(422);
+  }
+  for (const video_url of [
+    'https://youtu.be/dQw4w9WgXcQ?t=10',
+    'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=ignored',
+    'https://m.youtube.com/shorts/dQw4w9WgXcQ',
+    'https://youtube.com/embed/dQw4w9WgXcQ',
+  ]) {
+    const r = await post('learning', cookies[0])
+      .send({ ...learningContent, video_url })
+      .expect(201);
+    const detail = (await get('learning/' + r.body.id, cookies[0])).body;
+    assert.equal(detail.content.video_url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  }
+});

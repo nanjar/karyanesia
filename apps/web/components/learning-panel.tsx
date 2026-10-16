@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../app/api';
 type Content = {
+  video_url?: string;
   title: string;
   objective: string;
   transcript: string;
@@ -51,6 +52,7 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
     setBusy(true);
     try {
       const content = {
+        ...(d.get('video_url') ? { video_url: d.get('video_url') } : {}),
         title: d.get('title'),
         objective: d.get('objective'),
         transcript: d.get('transcript'),
@@ -77,7 +79,7 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
   return (
     <section className="learning-panel">
       <div className="alert">
-        Fondasi materi teks & kuis teori. Video privat, gambar, penugasan onboarding, dan penilaian
+        Materi teks, tautan video YouTube & kuis teori. Gambar, penugasan onboarding dan penilaian
         praktik belum tersedia. Lulus teori belum berarti kompeten.
       </div>
       {notice && (
@@ -106,6 +108,22 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
               {detail.content.title} · v{detail.version}
             </h2>
             <p>{detail.content.objective}</p>
+            {detail.content.video_url && (
+              <div className="learning-video">
+                <p>
+                  Video YouTube dimuat setelah Anda memilih buka. Ketersediaan dan izin pemutaran
+                  mengikuti pengaturan pemilik video.
+                </p>
+                <a
+                  className="secondary"
+                  href={detail.content.video_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Buka video di YouTube
+                </a>
+              </div>
+            )}
             <p className="learning-transcript">{detail.content.transcript}</p>
             <p>Batas lulus {detail.content.pass_score}% · Maksimal 3 percobaan per versi.</p>
             {detail.status === 'draft' ? (
@@ -207,6 +225,15 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
             tersedia melalui API dan menghasilkan versi baru.
           </p>
           <form className="learning-editor" onSubmit={create}>
+            <label>
+              Tautan video YouTube (opsional)
+              <input
+                name="video_url"
+                type="url"
+                maxLength={2048}
+                placeholder="https://www.youtube.com/watch?v=…"
+              />
+            </label>
             <label>
               Judul
               <input name="title" required maxLength={500} />

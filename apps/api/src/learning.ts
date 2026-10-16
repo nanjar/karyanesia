@@ -18,9 +18,16 @@ import { SessionGuard } from './security';
 import { admins, ApiRequest } from './types';
 import { audit } from './audit';
 import { digest } from './crypto';
+import { youtubeId } from './youtube';
 const text = z.string().trim().min(1).max(500);
 const contentSchema = z
   .strictObject({
+    video_url: z
+      .string()
+      .max(2048)
+      .refine((v) => youtubeId(v) !== null, 'Gunakan tautan HTTPS YouTube yang valid.')
+      .transform((v) => `https://www.youtube.com/watch?v=${youtubeId(v)}`)
+      .optional(),
     title: text,
     objective: text,
     transcript: z.string().trim().min(1).max(20000),

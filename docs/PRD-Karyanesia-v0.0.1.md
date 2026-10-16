@@ -106,9 +106,9 @@ Field wajib: employee_number, full_name, branch_code, job_code, supervisor_emplo
 Kriteria: hasil jumlah berhasil/gagal sesuai baris; admin dapat mengunduh kesalahan; staf tidak dapat memindahkan cabang atau menaikkan perannya sendiri.
 
 ### FR-03 — Materi mikro dan publikasi
-Modul terdiri atas judul, tujuan, jabatan sasaran, deskripsi, video, transkrip, gambar pendukung, kuis dan kompetensi terkait. Durasi sasaran 2 menit, batas MVP 5 menit; materi lebih panjang harus dipecah. Video MP4 tervalidasi dengan batas unggah awal 100 MB; gambar JPEG/PNG/WebP maksimal 5 MB. Penulis menyiapkan versi hemat kuota 360p/480p; transcoding otomatis tidak diwajibkan.
+Modul terdiri atas judul, tujuan, jabatan sasaran, deskripsi, video, transkrip, gambar pendukung, kuis dan kompetensi terkait. Durasi sasaran 2 menit, batas MVP 5 menit; materi lebih panjang harus dipecah. Video hanya menggunakan tautan HTTPS YouTube yang tervalidasi; tidak ada unggah, unduh, penyimpanan atau transcoding video oleh Karyanesia. Simpan ID video dan URL kanonis sebagai bagian versi materi. Sasaran durasi tetap 2 menit dan maksimum 5 menit, diverifikasi penulis sebelum publikasi. Gambar JPEG/PNG/WebP maksimal 5 MB.
 
-Status: draft → published → archived. Versi published tidak diubah di tempat. Setiap versi mencatat penulis, waktu terbit, nomor versi, dan checksum aset. Tenant memastikan hak penggunaan konten. Aset disajikan melalui akses privat dan signed URL singkat.
+Status: draft → published → archived. Versi published tidak diubah di tempat. Setiap versi mencatat penulis, waktu terbit, nomor versi, dan checksum aset. Tenant memastikan hak penggunaan konten. Aset unggahan non-video disajikan melalui akses privat dan signed URL singkat. Video mengikuti akses dan ketersediaan YouTube; tautan unlisted bukan kontrol akses tenant dan tidak menjamin kerahasiaan. Video harus dapat diputar oleh peserta; sediakan transkrip dan pesan kegagalan jika video dihapus, privat atau tidak dapat diputar.
 
 Kriteria: draft tidak muncul kepada staf; tugas menunjuk versi immutable; file invalid ditolak; materi tidak dapat dihapus permanen selama direferensikan histori.
 
@@ -216,7 +216,7 @@ MVP bersifat online-first. Jika jaringan putus, tampilkan status gagal simpan da
 | RoleGrant | membership_id, role, branch_scope |
 | Branch / Job | tenant_id, code, name; branch.timezone |
 | MediaAsset | tenant_id, object_key, mime, size, checksum, status |
-| Module / ModuleVersion | tenant_id, title; version, transcript, video_asset, pass_score, attempt_limit |
+| Module / ModuleVersion | tenant_id, title; version, transcript, youtube_video_id / video_url, pass_score, attempt_limit |
 | Question / Option | module_version_id, text/image, answer_key sisi server |
 | LearningPathVersion / Requirement | ordered module/rubric references, prerequisite, due_offset |
 | Assignment | tenant_id, membership_id, path_version_id, snapshot, start_at, due_at, status |
@@ -238,7 +238,7 @@ Usulan stack, bukan keputusan final pengadaan:
 - Frontend: Next.js dan TypeScript, web responsif dengan kemampuan PWA dasar.
 - Backend: NestJS, monolit modular untuk auth, organisasi, learning, SOP, skill, laporan dan audit.
 - Database: PostgreSQL; dapat memakai Supabase Postgres apabila sesuai biaya dan operasi. Pilih satu sistem identitas utama; jangan menggandakan akun auth tanpa kebutuhan.
-- Media: object storage kompatibel S3, bucket privat dan signed URL. Video tidak disimpan sebagai blob database.
+- Video: tautan YouTube saja; validasi host dan ID, tanpa mengambil URL pengguna di server. Tidak ada pipeline unggah video. Object storage kompatibel S3 dengan bucket privat dan signed URL hanya untuk gambar/bukti non-video.
 - Background job: Redis + BullMQ untuk recurring instance, reminder, import, dan ekspor. PostgreSQL tetap sumber kebenaran.
 - Deployment: Docker Compose pada VPS untuk pilot, reverse proxy TLS, backup di lokasi terpisah. Tidak memerlukan Kubernetes atau Vercel.
 
@@ -278,7 +278,7 @@ Endpoint tabel ini adalah rancangan kontrak; path final diselaraskan pada spesif
 | Aksesibilitas | Audit alur kritis keyboard, screen reader, kontras dan alternatif media |
 | Kompatibilitas | Chrome Android dan browser desktop modern; Safari iOS diuji untuk video, upload, dan login |
 
-Target harus diuji pada infrastruktur yang dipilih. Beban video dihitung berdasarkan bandwidth object storage, bukan digabung ke concurrency API.
+Target harus diuji pada infrastruktur yang dipilih. Pemutaran video dilayani YouTube, terpisah dari concurrency API.
 
 ## 17. Keamanan, privasi, dan pengelolaan data
 - Password di-hash menggunakan algoritme modern; TLS; secrets hanya pada secret store/environment, tidak pada source code.
@@ -337,7 +337,7 @@ Definition of Done: seluruh P0 diterima; tidak ada bug kritis/tinggi terbuka pad
 | Checklist menjadi formalitas | Item relevan, sedikit bukti wajib, review berbasis risiko, tindak lanjut nyata |
 | Konten cepat usang | Pemilik konten, jadwal review, versioning dan pelatihan ulang eksplisit |
 | Supervisi menjadi bottleneck | Antrean review, pembagian scope assessor, ringkasan tugas tertunda |
-| Kuota/bandwidth mahal | Video pendek terkompresi, object storage, pemantauan transfer dan batas unggah |
+| Kuota/bandwidth mahal | Video pendek melalui tautan YouTube; pantau ketersediaan dan akses peserta |
 | Kinerja dinilai tanpa konteks | Tampilkan syarat, bukti, pengecualian, serta hak meminta review; keputusan oleh manusia |
 | Kebocoran antar perusahaan | Isolasi berlapis, uji negatif akses, bucket privat dan audit |
 | Kurang koneksi/perangkat | Pilot memvalidasi kondisi lapangan; konten teks alternatif; offline penuh pada fase berikutnya |
@@ -346,11 +346,11 @@ Definition of Done: seluruh P0 diterima; tidak ada bug kritis/tinggi terbuka pad
 ## 22. Model bisnis dan biaya
 Hipotesis monetisasi: langganan per perusahaan dengan paket jumlah cabang dan staf aktif; jasa onboarding/pembuatan konten sebagai biaya terpisah. Dedicated/self-hosted dipertimbangkan setelah kebutuhan enterprise terbukti. Harga belum ditetapkan dan harus diuji melalui wawancara/pilot; tidak ada proyeksi pendapatan aktual pada versi ini.
 
-Komponen biaya: VPS/API, PostgreSQL dan backup, Redis/worker, penyimpanan video/foto, bandwidth, email autentikasi, observabilitas, dukungan dan produksi konten. Estimasi bulanan = biaya tetap infrastruktur + GB penyimpanan × tarif + GB transfer × tarif + pesan email × tarif + tenaga operasional. Isi tarif berdasarkan penawaran aktual sebelum pengadaan. AI opsional fase berikutnya menggunakan BYOK dengan batas biaya dan persetujuan konten manusia.
+Komponen biaya: VPS/API, PostgreSQL dan backup, Redis/worker, penyimpanan gambar/bukti, bandwidth, email autentikasi, observabilitas, dukungan dan produksi konten. Estimasi bulanan = biaya tetap infrastruktur + GB penyimpanan × tarif + GB transfer × tarif + pesan email × tarif + tenaga operasional. Isi tarif berdasarkan penawaran aktual sebelum pengadaan. AI opsional fase berikutnya menggunakan BYOK dengan batas biaya dan persetujuan konten manusia.
 
 ## 23. Keputusan baseline dan hal yang perlu divalidasi
 ### Baseline v0.0.1
-Nama Karyanesia; B2B SaaS multi-tenant; ritel sebagai pilot; web responsif online-first; bahasa Indonesia; Next.js/NestJS/PostgreSQL sebagai usulan stack; video unggahan perusahaan; penilaian teori dan praktik terpisah; P0 tanpa AI, billing otomatis, dan integrasi HRIS.
+Nama Karyanesia; B2B SaaS multi-tenant; ritel sebagai pilot; web responsif online-first; bahasa Indonesia; Next.js/NestJS/PostgreSQL sebagai usulan stack; video melalui tautan YouTube saja; penilaian teori dan praktik terpisah; P0 tanpa AI, billing otomatis, dan integrasi HRIS.
 
 ### Validasi sebelum pembangunan rinci/go-live
 1. Konfirmasi perusahaan pilot, jabatan, jumlah staf, dan pemilik SOP.
@@ -376,3 +376,6 @@ Validasi tersebut tidak mengubah cakupan draft ini menjadi janji implementasi ta
 | Versi | Tanggal | Perubahan |
 |---|---|---|
 | 0.0.1 | 16 Oktober 2026 | Draft awal lengkap: produk, scope, alur, FR, aturan bisnis, data, arsitektur, nonfungsional, pilot dan acceptance |
+
+### Perubahan keputusan — 16 Oktober 2026
+Atas arahan pemilik produk, sumber video dibatasi ke tautan YouTube. Ketentuan ini menggantikan rencana unggah MP4 dan penyimpanan video privat pada rancangan awal. Penyimpanan privat tetap berlaku untuk gambar/bukti non-video.

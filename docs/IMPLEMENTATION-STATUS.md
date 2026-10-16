@@ -84,6 +84,10 @@ Batas yang masih berlaku: impor diproses dalam transaksi API, belum melalui work
 - API arsip menghentikan akses pustaka/submission baru, sementara histori tetap tersimpan. Replay submission lama tetap tersedia melalui key yang sama.
 - Lulus teori tidak menandai praktik atau onboarding selesai. Hasil eksplisit `practice_status: not_assessed`.
 
-Belum selesai: aset video/gambar privat dan validasi file, signed URL, kompetensi dan jabatan sasaran, editor banyak soal dan revisi/arsip di UI, pembukaan ulang percobaan oleh supervisor, jalur/assignment/snapshot, observasi praktik. Tidak ada klaim durasi video atau kompetensi staf. Daftar pustaka awal dibatasi 100 versi terbaru; pagination belum tersedia. Visual QA browser masih perlu dijalankan sebelum pilot.
+Belum selesai: aset gambar privat dan validasi file, signed URL gambar, kompetensi dan jabatan sasaran, editor banyak soal dan revisi/arsip di UI, pembukaan ulang percobaan oleh supervisor, jalur/assignment/snapshot, observasi praktik. Tidak ada klaim durasi video atau kompetensi staf. Daftar pustaka awal dibatasi 100 versi terbaru; pagination belum tersedia. Visual QA browser masih perlu dijalankan sebelum pilot.
 
 API tambahan (memerlukan sesi dan Origin untuk POST): `GET/POST /api/v1/learning`, `GET /api/v1/learning/:id`, `POST .../:id/revise`, `POST .../:id/publish`, `POST .../:id/archive`, `POST .../:id/attempts`. Publikasi/arsip memakai `{ "confirm": true }`; submit memakai UUID `idempotency_key` dan array `answers` berindeks nol. Revisi memakai struktur konten yang sama seperti create. Semua pengelolaan terbatas OWNER/ADMIN pada tahap ini.
+
+### Sumber video: YouTube saja
+
+Materi menerima `video_url` opsional berupa HTTPS youtube.com/watch, /shorts, /embed atau youtu.be dengan ID 11 karakter. API menormalisasi ke URL watch kanonis dan menolak host palsu/protokol lain. UI membuka video di YouTube; tidak ada upload/download/penyimpanan video. Durasi dan ketersediaan video belum diverifikasi otomatis. Versi lama tanpa video tetap valid. Tautan unlisted tidak dianggap sebagai video privat tenant. Deck investor/CTO sebelumnya belum direvisi untuk perubahan sumber video ini.
