@@ -29,6 +29,13 @@ type Assignment = {
     title: string;
     version: number;
     steps: {
+      practice_rubric?: {
+        id: string;
+        title: string;
+        version: number;
+        instructions: string;
+        items: { position: number; label: string; required: boolean; critical: boolean }[];
+      };
       version_id: string;
       position: number;
       module_title: string;
@@ -132,6 +139,28 @@ export function OnboardingAssignmentsPanel({
                     {s.prerequisite ? `Prasyarat langkah ${s.prerequisite}` : 'Tanpa prasyarat'} ·
                     Praktik wajib, belum dinilai
                   </p>
+                  {s.practice_rubric ? (
+                    <details>
+                      <summary>
+                        Rubrik: {s.practice_rubric.title} · v{s.practice_rubric.version}
+                      </summary>
+                      <p className="learning-transcript">{s.practice_rubric.instructions}</p>
+                      <ul>
+                        {s.practice_rubric.items.map((r) => (
+                          <li key={r.position}>
+                            {r.label} · {r.required ? 'Wajib' : 'Opsional'}{' '}
+                            {r.critical && <span className="rubric-critical">Kritis</span>}
+                          </li>
+                        ))}
+                      </ul>
+                      <p>Form observasi dan pengesahan belum tersedia.</p>
+                    </details>
+                  ) : (
+                    <p>
+                      Belum ada rubrik pada snapshot tugas ini. Admin perlu membuat versi jalur
+                      dengan rubrik dan menugaskan ulang sebelum penilaian praktik.
+                    </p>
+                  )}
                   <p>
                     Teori:{' '}
                     {

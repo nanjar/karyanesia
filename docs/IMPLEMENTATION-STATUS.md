@@ -138,3 +138,15 @@ Belum selesai: pelaksanaan prasyarat pada tugas, praktik/rubrik/approval, notifi
 - Lewat tenggat dihitung server dari due_at dan kewajiban praktik yang belum selesai, tanpa menutup akses belajar. Pembatalan mematikan flag overdue tugas.
 
 Belum selesai: prasyarat sebagai pembatas akses, praktek/rubrik/approval, expiry teori, notifikasi, pagination dan pemeriksaan visual/interaksi browser. Tidak ada klaim onboarding lengkap. Video tetap tautan YouTube saja. Perubahan ini tidak memerlukan migrasi database.
+
+## Milestone 3E: rubrik praktik berversi (fondasi FR-06)
+
+- OWNER/ADMIN membuat rubrik dengan judul, petunjuk observasi dan 1–20 item. Setiap item memiliki kriteria teks, required dan critical; minimal satu item wajib, dan critical hanya sah jika required=true. Nomor posisi item ditetapkan server.
+- Rubrik mengikuti draft → published → archived. Versi terbit dan identitasnya dilindungi trigger database. Revisi membuat draft baru dengan nomor berurutan; checksum, penulis, waktu terbit dan audit disimpan. Tidak ada hard-delete.
+- Editor jalur kini meminta versi rubrik terbit untuk setiap langkah. API menerima `rubric_version_id` opsional agar jalur/integrasi awal tetap kompatibel; tanpa referensi ini langkah tetap wajib praktik tetapi belum siap dinilai. Tidak ada rubrik atau hasil kompeten yang dibuat otomatis untuk data lama.
+- Snapshot jalur menyimpan ID/versi/checksum rubrik, petunjuk dan seluruh item. Referensi komposit tenant/rubrik pada onboarding_path_modules mencegah relasi lintas tenant dan menjaga versi yang direferensikan. Snapshot assignment menyalin kriteria tersebut sehingga revisi atau arsip rubrik tidak mengubah tugas lama.
+- Publikasi jalur serta preview/konfirmasi assignment memeriksa ulang status rubrik terbit. Rubrik yang diarsipkan menolak penugasan baru; assignment lama tetap menampilkan kriteria aslinya. Rubrik yang sama boleh digunakan beberapa langkah.
+- Menu Rubrik praktik hanya untuk admin. Staf/supervisor melihat kriteria pada assignment yang lolos scope mereka; tidak memperoleh akses pustaka rubrik admin.
+- API: `GET/POST /api/v1/practice-rubrics`, `GET /:id`, `POST /:id/revise`, `POST /:id/publish`, `POST /:id/archive`. Create/revise memakai `{title,instructions,items:[{label,required,critical}]}` tanpa position; publish/archive memakai `{confirm:true}`. Daftar/pemilih mengambil maksimal 100 versi terbaru. Migrasi 007 menambah rubrik dan referensinya pada jalur.
+
+Batas 20 item merupakan batas implementasi awal untuk pilot. Belum tersedia: pengisian observasi, competent/needs_practice, komentar dan instruksi latihan hasil gagal, bukti, koreksi melalui record baru, pengajuan praktik, review/approval, dan completed. Rubrik tersimpan tidak berarti praktik sudah dinilai. Pemeriksaan visual browser masih diperlukan. Video tetap hanya tautan YouTube.

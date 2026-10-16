@@ -1392,3 +1392,147 @@ test('cancelled assignment evidence retains database timestamp precision', async
   assert.equal(item.progress.theory_passed, 1);
   assert.equal(item.progress.steps[0].attempts, 1);
 });
+
+let rubricId = '',
+  rubricPath = '',
+  rubricAssignment = '';
+const rubricContent = {
+  title: 'Praktik pelayanan',
+  instructions: 'Amati staf menjalankan prosedur pada kondisi kerja yang sesuai.',
+  items: [
+    { label: 'Area kerja aman', required: true, critical: true },
+    { label: 'Prosedur dijalankan berurutan', required: true, critical: false },
+    { label: 'Menyampaikan saran perbaikan', required: false, critical: false },
+  ],
+};
+const rubricPathPayload = (rubric: string) => ({
+  title: 'Jalur dengan rubrik',
+  description: 'Persyaratan praktik eksplisit',
+  steps: [{ version_id: learningId, due_days: 1, rubric_version_id: rubric }],
+});
+test('practice rubrics enforce required and critical items and tenant authorization', async () => {
+  await post('practice-rubrics', learnerCookie).send(rubricContent).expect(403);
+  await get('practice-rubrics', supervisorCookie).expect(403);
+  await post('practice-rubrics', cookies[0])
+    .send({
+      ...rubricContent,
+      items: [{ label: 'Tidak konsisten', required: false, critical: true }],
+    })
+    .expect(422);
+  await post('practice-rubrics', cookies[0])
+    .send({
+      ...rubricContent,
+      items: [{ label: 'Semua opsional', required: false, critical: false }],
+    })
+    .expect(422);
+  await post('practice-rubrics', cookies[0])
+    .send({ ...rubricContent, items: [] })
+    .expect(422);
+  await post('practice-rubrics', cookies[0])
+    .send({ ...rubricContent, items: Array.from({ length: 21 }, () => rubricContent.items[0]) })
+    .expect(422);
+  rubricId = (await post('practice-rubrics', cookies[0]).send(rubricContent).expect(201)).body.id;
+  await get('practice-rubrics/' + rubricId, cookies[1]).expect(404);
+  await post(`practice-rubrics/${rubricId}/publish`, cookies[1])
+    .send({ confirm: true })
+    .expect(409);
+  await post('onboarding-paths', cookies[0]).send(rubricPathPayload(rubricId)).expect(409);
+  await post(`practice-rubrics/${rubricId}/publish`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  const detail = (await get('practice-rubrics/' + rubricId, cookies[0])).body;
+  assert.equal(detail.content.items[0].position, 1);
+  assert.equal(detail.content.items[0].critical, true);
+  assert.equal(detail.checksum.length, 64);
+  const foreign = (await post('practice-rubrics', cookies[1]).send(rubricContent)).body.id;
+  await post(`practice-rubrics/${foreign}/publish`, cookies[1]).send({ confirm: true }).expect(201);
+  await post('onboarding-paths', cookies[0]).send(rubricPathPayload(foreign)).expect(409);
+});
+test('published rubrics are immutable and snapshots preserve criteria across revisions', async () => {
+  await assert.rejects(
+    db.query('UPDATE practice_rubrics SET content=$1 WHERE id=$2', [
+      JSON.stringify({ ...rubricContent, title: 'Tampered' }),
+      rubricId,
+    ]),
+  );
+  await assert.rejects(db.query('DELETE FROM practice_rubrics WHERE id=$1', [rubricId]));
+  rubricPath = (
+    await post('onboarding-paths', cookies[0]).send(rubricPathPayload(rubricId)).expect(201)
+  ).body.id;
+  const draft = (await get('onboarding-paths/' + rubricPath, cookies[0])).body;
+  assert.equal(draft.content.steps[0].practice_rubric.id, rubricId);
+  assert.equal(draft.content.steps[0].practice_rubric.items[0].label, rubricContent.items[0].label);
+  assert.equal(
+    (
+      await db.query('SELECT rubric_version_id FROM onboarding_path_modules WHERE path_id=$1', [
+        rubricPath,
+      ])
+    ).rows[0].rubric_version_id,
+    rubricId,
+  );
+  await post(`onboarding-paths/${rubricPath}/publish`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  const batch = (
+    await post('onboarding-assignments/preview', cookies[0]).send({
+      ...assignmentPayload(),
+      path_version_id: rubricPath,
+    })
+  ).body.id;
+  rubricAssignment = (
+    await post(`onboarding-assignments/batches/${batch}/commit`, cookies[0])
+      .send({ confirm: true })
+      .expect(201)
+  ).body.assignment_ids[0];
+  const revisions = await Promise.all(
+    [1, 2].map((i) =>
+      post(`practice-rubrics/${rubricId}/revise`, cookies[0]).send({
+        ...rubricContent,
+        title: 'Rubrik revisi ' + i,
+      }),
+    ),
+  );
+  assert.deepEqual(revisions.map((r) => r.body.version).sort(), [2, 3]);
+  const task = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (a: any) => a.id === rubricAssignment,
+  );
+  assert.equal(task.snapshot.steps[0].practice_rubric.version, 1);
+  assert.equal(task.snapshot.steps[0].practice_rubric.title, rubricContent.title);
+  assert.equal(task.snapshot.steps[0].practice_rubric.items.length, 3);
+  assert.equal(task.progress.practice_passed, 0);
+});
+test('archived rubrics block new publication and assignment while preserving existing snapshots', async () => {
+  const draft = (
+    await post('onboarding-paths', cookies[0]).send(rubricPathPayload(rubricId)).expect(201)
+  ).body.id;
+  const pending = (
+    await post('onboarding-assignments/preview', cookies[0]).send({
+      ...assignmentPayload(),
+      path_version_id: rubricPath,
+    })
+  ).body.id;
+  await post(`practice-rubrics/${rubricId}/archive`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  await post(`onboarding-paths/${draft}/publish`, cookies[0]).send({ confirm: true }).expect(409);
+  await post('onboarding-assignments/preview', cookies[0])
+    .send({ ...assignmentPayload(), path_version_id: rubricPath })
+    .expect(409);
+  await post(`onboarding-assignments/batches/${pending}/commit`, cookies[0])
+    .send({ confirm: true })
+    .expect(409);
+  const existing = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (a: any) => a.id === rubricAssignment,
+  );
+  assert.equal(existing.snapshot.steps[0].practice_rubric.id, rubricId);
+  assert.equal(existing.snapshot.steps[0].practice_rubric.items[0].critical, true);
+  assert.equal(existing.progress.practice_passed, 0);
+  const old = (await get('practice-rubrics/' + rubricId, cookies[0])).body;
+  assert.equal(old.status, 'archived');
+  assert.equal(old.content.title, rubricContent.title);
+  assert.ok(
+    (await get('audit-events', cookies[0])).body.some(
+      (a: any) => a.action === 'practice_rubric.archived',
+    ),
+  );
+});

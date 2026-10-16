@@ -89,6 +89,23 @@ async function available(db: Executor, tenant: string, id: string) {
     throw new ConflictException(
       'Ada modul yang sudah tidak tersedia. Revisi jalur sebelum menugaskan.',
     );
+  const rubricIds = [
+    ...new Set<string>(
+      row.content.steps.flatMap((s: any) => (s.rubric_version_id ? [s.rubric_version_id] : [])),
+    ),
+  ].sort();
+  if (rubricIds.length) {
+    const rubrics = (
+      await db.query(
+        "SELECT id FROM practice_rubrics WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND status='published' ORDER BY id FOR SHARE",
+        [tenant, rubricIds],
+      )
+    ).rows;
+    if (rubrics.length !== rubricIds.length)
+      throw new ConflictException(
+        'Ada rubrik yang tidak tersedia. Revisi jalur sebelum menugaskan.',
+      );
+  }
   return { id: row.id, version: row.version, checksum: row.checksum, ...row.content };
 }
 @Controller('onboarding-assignments')

@@ -189,3 +189,11 @@ Di **Tugas onboarding**, status berubah dari **Ditugaskan** ke **Sedang belajar*
 Staf dapat memilih **Buka materi & kuis** dari tugasnya sendiri. Hasil submit memperbarui progres tugas; tombol **Perbarui tugas** memuat perubahan dari sesi/perangkat lain. Jatah tiga percobaan dan reset supervisor tetap berlaku per staf/versi modul, dibagi dengan pustaka belajar, bukan jatah baru pada setiap assignment. Versi yang diarsipkan tidak dapat dibuka; hubungi admin untuk pengganti, sementara bukti lama tetap terlihat.
 
 Prasyarat belum membatasi akses dan praktik belum dapat dinilai. Angka teori lulus tidak boleh dibaca sebagai penyelesaian onboarding. Tugas cancelled tetap dibatalkan dan histori teorinya tidak mencakup kuis sesudah waktu pembatalan. Bukti teori belum memiliki masa kedaluwarsa otomatis; gunakan versi baru jika konten berubah atau perlu diuji ulang.
+
+### Menyiapkan rubrik praktik
+
+Sebagai OWNER/ADMIN, buka **Rubrik praktik**, isi judul dan petunjuk observasi, lalu susun 1–20 kriteria yang dapat diamati. Minimal satu item harus wajib. Menandai **Kritis** otomatis menandai **Wajib**; mematikan Wajib juga mematikan Kritis. Simpan draft, tinjau detail lalu **Terbitkan rubrik**.
+
+Pada **Jalur onboarding**, pilih versi rubrik terbit di setiap langkah sebelum menyimpan editor. Untuk jalur lama, pilih **Revisi ke versi baru**, lengkapi rubrik lalu terbitkan ulang. Rubrik tersalin ke snapshot jalur dan selanjutnya ke tugas staf. Perubahan rubrik harus melalui revisi versi baru; tugas lama mempertahankan kriteria asli. Arsip rubrik menghentikan pemakaiannya untuk penugasan baru tanpa menghapus snapshot tugas lama.
+
+Tugas yang dibuat sebelum ada rubrik tetap tersimpan dan diberi pesan belum memiliki kriteria praktik. Buat versi jalur dengan rubrik dan penugasan baru, lalu batalkan tugas lama dengan alasan jika sesuai kebijakan operasional. Tidak ada perubahan snapshot atau migrasi hasil kompetensi otomatis. Form observasi/pengesahan belum tersedia pada tahap ini.

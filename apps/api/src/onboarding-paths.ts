@@ -26,6 +26,7 @@ const schema = z
       .array(
         z.strictObject({
           version_id: z.uuid(),
+          rubric_version_id: z.uuid().optional(),
           due_days: z.number().int().min(0).max(365),
           prerequisite: z.number().int().min(1).max(20).nullable().default(null),
           practice_required: z.literal(true).default(true),
@@ -71,6 +72,19 @@ async function snapshot(db: Executor, tenant: string, input: z.infer<typeof sche
     throw new ConflictException(
       'Semua langkah harus memakai versi modul terbit dalam perusahaan Anda.',
     );
+  const rubricIds = [
+    ...new Set(input.steps.flatMap((s) => (s.rubric_version_id ? [s.rubric_version_id] : []))),
+  ].sort();
+  const rubrics = rubricIds.length
+    ? (
+        await db.query(
+          "SELECT id,version,checksum,content FROM practice_rubrics WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND status='published' ORDER BY id FOR SHARE",
+          [tenant, rubricIds],
+        )
+      ).rows
+    : [];
+  if (rubrics.length !== rubricIds.length)
+    throw new ConflictException('Rubrik harus versi terbit dalam perusahaan Anda.');
   return {
     ...input,
     steps: input.steps.map((s, i) => {
@@ -80,6 +94,14 @@ async function snapshot(db: Executor, tenant: string, input: z.infer<typeof sche
         position: i + 1,
         module_title: module.title,
         module_checksum: module.checksum,
+        ...(s.rubric_version_id
+          ? {
+              practice_rubric: (() => {
+                const r = rubrics.find((r) => r.id === s.rubric_version_id)!;
+                return { id: r.id, version: r.version, checksum: r.checksum, ...r.content };
+              })(),
+            }
+          : {}),
       };
     }),
   };
@@ -163,8 +185,8 @@ export class OnboardingPathsController {
       );
       for (const step of content.steps)
         await db.query(
-          'INSERT INTO onboarding_path_modules(tenant_id,path_id,position,version_id) VALUES($1,$2,$3,$4)',
-          [req.actor.tenant_id, id, step.position, step.version_id],
+          'INSERT INTO onboarding_path_modules(tenant_id,path_id,position,version_id,rubric_version_id) VALUES($1,$2,$3,$4,$5)',
+          [req.actor.tenant_id, id, step.position, step.version_id, step.rubric_version_id ?? null],
         );
       await audit(
         db,
@@ -199,6 +221,7 @@ export class OnboardingPathsController {
         description: row.content.description,
         steps: row.content.steps.map((s: any) => ({
           version_id: s.version_id,
+          ...(s.rubric_version_id ? { rubric_version_id: s.rubric_version_id } : {}),
           due_days: s.due_days,
           prerequisite: s.prerequisite,
           practice_required: s.practice_required,

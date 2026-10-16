@@ -131,6 +131,8 @@ Assessor memakai rubrik dengan item wajib, hasil competent/needs_practice, komen
 
 Kriteria: assessor hanya menilai staf dalam scope; self-approval ditolak; staf dapat melihat hasil dan meminta peninjauan; identitas assessor, tanggal dan versi rubrik tercatat.
 
+Rubrik praktik dikelola sebagai versi draft/published/archived dengan penulis, waktu terbit dan checksum. Versi terbit tidak diubah di tempat. Langkah jalur menunjuk ID versi rubrik dan menyalin kriterianya ke snapshot assignment. Batas implementasi awal adalah 1–20 item; minimal satu item wajib dan setiap item kritis juga wajib. Jalur/tugas awal tanpa rubrik tetap menyimpan histori tetapi belum siap dinilai, sehingga harus ditangani melalui versi jalur serta penugasan baru, bukan perubahan persyaratan tugas lama.
+
 ### FR-07 — Template dan penjadwalan checklist
 Template memiliki nama, versi, lokasi/jabatan sasaran, waktu mulai, tenggat, dan item. Jenis item: ya/tidak, angka dengan satuan/rentang, teks, foto. Item wajib dan kritis ditandai terpisah. Jawaban “tidak sesuai” dapat diwajibkan membuat kendala.
 

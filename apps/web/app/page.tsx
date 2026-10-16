@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { PracticeRubricsPanel } from '../components/practice-rubrics-panel';
 import { OnboardingAssignmentsPanel } from '../components/onboarding-assignments-panel';
 import { OnboardingPathsPanel } from '../components/onboarding-paths-panel';
 import { LearningPanel } from '../components/learning-panel';
@@ -370,13 +371,19 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
     import: 'Impor staf CSV',
     learning: 'Materi & kuis teori',
     paths: 'Jalur onboarding',
+    rubrics: 'Rubrik praktik',
     assignments: 'Tugas onboarding',
   };
   const nav = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
     { id: 'learning', label: 'Materi & kuis', icon: GraduationCap },
     { id: 'assignments', label: 'Tugas onboarding', icon: ClipboardCheck },
-    ...(admin ? [{ id: 'paths', label: 'Jalur onboarding', icon: GraduationCap }] : []),
+    ...(admin
+      ? [
+          { id: 'paths', label: 'Jalur onboarding', icon: GraduationCap },
+          { id: 'rubrics', label: 'Rubrik praktik', icon: ClipboardCheck },
+        ]
+      : []),
     {
       id: 'staff',
       label: actor.role === 'STAFF' ? 'Profil staf' : 'Organisasi & staf',
@@ -554,6 +561,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
                   onError={handleError}
                 />
               )}
+              {tab === 'rubrics' && admin && <PracticeRubricsPanel onError={handleError} />}
               {tab === 'paths' && admin && <OnboardingPathsPanel onError={handleError} />}
               {tab === 'learning' && (
                 <LearningPanel

@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../app/api';
 type Step = {
   version_id: string;
+  rubric_version_id?: string;
+  practice_rubric?: { title: string; version: number };
   due_days: number;
   prerequisite: number | null;
   practice_required: true;
@@ -16,18 +18,21 @@ export function OnboardingPathsPanel({ onError }: { onError: (e: Error) => void 
       { id: string; version: number; status: string; title: string }[]
     >([]),
     [modules, setModules] = useState<Module[]>([]),
+    [rubrics, setRubrics] = useState<Module[]>([]),
     [detail, setDetail] = useState<Path | null>(null),
     [revision, setRevision] = useState<Path | null>(null),
     [serial, setSerial] = useState(0),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState('');
   async function load() {
-    const [paths, learning] = await Promise.all([
+    const [paths, learning, rubricList] = await Promise.all([
       api<{ items: typeof items }>('onboarding-paths'),
       api<{ items: Module[] }>('learning'),
+      api<{ items: Module[] }>('practice-rubrics'),
     ]);
     setItems(paths.items);
     setModules(learning.items.filter((m) => m.status === 'published'));
+    setRubrics(rubricList.items.filter((r) => r.status === 'published'));
   }
   useEffect(() => {
     void load().catch(onError);
@@ -117,6 +122,11 @@ export function OnboardingPathsPanel({ onError }: { onError: (e: Error) => void 
                     {s.prerequisite ? `Prasyarat langkah ${s.prerequisite}` : 'Tanpa prasyarat'} ·
                     Praktik wajib
                   </p>
+                  <p>
+                    {s.practice_rubric
+                      ? `Rubrik: ${s.practice_rubric.title} · v${s.practice_rubric.version}`
+                      : 'Belum memiliki rubrik. Revisi jalur untuk menyiapkan praktik.'}
+                  </p>
                   <small>Versi modul: {s.version_id}</small>
                 </li>
               ))}
@@ -165,6 +175,7 @@ export function OnboardingPathsPanel({ onError }: { onError: (e: Error) => void 
         key={`${revision?.id ?? 'new'}-${serial}`}
         initial={revision}
         modules={modules}
+        rubrics={rubrics}
         busy={busy}
         onCancel={() => {
           setRevision(null);
@@ -196,12 +207,14 @@ export function OnboardingPathsPanel({ onError }: { onError: (e: Error) => void 
 function PathEditor({
   initial,
   modules,
+  rubrics,
   busy,
   onCancel,
   onSave,
 }: {
   initial: Path | null;
   modules: Module[];
+  rubrics: Module[];
   busy: boolean;
   onCancel: () => void;
   onSave: (c: Content) => Promise<void>;
@@ -213,6 +226,7 @@ function PathEditor({
           description: initial.content.description,
           steps: initial.content.steps.map((s) => ({
             version_id: s.version_id,
+            ...(s.rubric_version_id ? { rubric_version_id: s.rubric_version_id } : {}),
             due_days: s.due_days,
             prerequisite: s.prerequisite,
             practice_required: true,
@@ -315,7 +329,29 @@ function PathEditor({
                   ))}
                 </select>
               </label>
-              <p>Observasi praktik wajib.</p>
+              <label>
+                Versi rubrik praktik terbit
+                <select
+                  required
+                  value={s.rubric_version_id ?? ''}
+                  onChange={(e) => update(i, { rubric_version_id: e.target.value || undefined })}
+                >
+                  <option value="">Pilih rubrik</option>
+                  {s.rubric_version_id && !rubrics.some((r) => r.id === s.rubric_version_id) && (
+                    <option value={s.rubric_version_id}>
+                      Versi lama tidak tersedia — pilih pengganti
+                    </option>
+                  )}
+                  {rubrics.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.title} · v{r.version}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p>
+                Observasi praktik wajib. Siapkan rubrik melalui menu Rubrik praktik terlebih dahulu.
+              </p>
               <button
                 className="text-button"
                 type="button"

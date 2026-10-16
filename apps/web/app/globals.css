@@ -1395,3 +1395,13 @@ select:hover {
 .learning-editor select[multiple] {
   min-height: 160px;
 }
+.rubric-critical {
+  display: inline-block;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}

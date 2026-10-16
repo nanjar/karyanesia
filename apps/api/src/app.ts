@@ -7,6 +7,7 @@ import { AuthController } from './auth';
 import { OrganizationController } from './organization';
 import { OnboardingAssignmentsController } from './onboarding-assignments';
 import { OnboardingPathsController } from './onboarding-paths';
+import { PracticeRubricsController } from './practice-rubrics';
 import { LearningController } from './learning';
 import { StaffImportsController } from './staff-imports';
 import { OriginGuard, SessionGuard } from './security';
@@ -24,6 +25,7 @@ class HealthController {
     OrganizationController,
     StaffImportsController,
     LearningController,
+    PracticeRubricsController,
     OnboardingPathsController,
     OnboardingAssignmentsController,
     HealthController,
