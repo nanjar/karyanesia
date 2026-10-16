@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
+import { json } from 'express';
 import helmet from 'helmet';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ErrorFilter } from './errors';
@@ -9,6 +10,7 @@ export function setup(app: INestApplication, openApi = true) {
   app.use(helmet());
   app.use(cookieParser());
   app.use(requestContext);
+  app.use(json({ limit: '2mb' }));
   app.useGlobalFilters(new ErrorFilter());
   if (openApi) {
     const cfg = new DocumentBuilder()

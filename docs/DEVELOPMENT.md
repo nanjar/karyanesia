@@ -115,3 +115,39 @@ Port host terikat ke loopback. Buka http://localhost:3000 untuk development. API
 ## Dependency override
 
 Override `js-yaml` milik `@nestjs/swagger` menggunakan versi 5.5.0 untuk menghindari rentang advisory GHSA-r3ph-w7gj-g6xm. Pertahankan lockfile dan jalankan audit setelah pembaruan dependency.
+
+## Impor staf CSV
+
+Jalankan migrasi terbaru sebelum menyalakan API:
+
+```bash
+npm run db:migrate
+```
+
+Sebagai OWNER/ADMIN, buka **Impor staf CSV**. Unduh template, ganti kode cabang/jabatan dengan kode milik perusahaan, lalu unggah CSV UTF-8 dengan delimiter koma. Batas satu batch adalah 5.000 record dan 1 MiB. Sel di atas 16 KiB atau format kutip rusak membuat file ditolak.
+
+```csv
+employee_number,full_name,branch_code,job_code,supervisor_employee_number,email,start_date
+EMP001,"Rina, Ayu",JKT01,KASIR,SPV001,rina@example.test,2026-10-01
+EMP002,Budi,JKT01,KASIR,,,
+```
+
+Kolom pertama hingga `job_code` wajib. Supervisor harus merupakan akun OWNER/ADMIN/SUPERVISOR yang sudah aktif dalam perusahaan yang sama. Referensi supervisor baru dalam batch yang sama belum didukung. `email` dan tanggal mulai opsional. Tanggal menggunakan YYYY-MM-DD. Kolom tidak dikenal, termasuk role, password dan tenant_id, ditolak.
+
+Pratinjau tidak membuat akun. Semua kemunculan ID yang berulang dalam file dianggap bermasalah. ID yang sudah ada, termasuk staf nonaktif, tidak diubah. Centang konfirmasi untuk menerapkan kandidat valid. Referensi dan duplikasi divalidasi ulang di server saat penyimpanan, sehingga hasil final dapat memiliki lebih sedikit staf berhasil daripada pratinjau.
+
+Gunakan **Muat status** atau **Batch terbaru perusahaan** saat koneksi terputus. Mengulang konfirmasi pada ID batch yang sama mengembalikan hasil sebelumnya. Mengunggah ulang file akan membuat pratinjau baru, yang menandai ID yang sudah dibuat sebagai duplikat.
+
+Laporan kesalahan berisi record gagal dan alasan. Nomor baris adalah posisi akhir record dalam file (record dengan sel multiline dapat mencakup beberapa baris fisik). CSV laporan menyertakan kolom diagnostik `row_number` dan `errors`, serta dapat menambahkan apostrof di depan nilai berisiko menjadi formula spreadsheet. Laporan ditujukan untuk pemeriksaan: salin nilai yang sudah diperbaiki ke template baru, hapus kolom diagnostik, lalu unggah lagi. Jangan menghapus apostrof perlindungan hanya untuk membuka laporan di spreadsheet.
+
+Impor membuat akun STAFF dengan password kosong dan tidak mengirim email atau token aktivasi massal. Gunakan **Kode baru** pada direktori staf untuk menerbitkan kode aktivasi satu kali, lalu bagikan melalui kanal internal aman. Kode berlaku 24 jam sejak diterbitkan.
+
+API:
+
+- `POST /api/v1/staff-imports/preview` dengan `{ "csv": "..." }`.
+- `GET /api/v1/staff-imports` untuk sepuluh batch terbaru perusahaan.
+- `GET /api/v1/staff-imports/{id}` untuk detail pratinjau/hasil.
+- `POST /api/v1/staff-imports/{id}/commit` dengan `{ "confirm": true }`.
+- `GET /api/v1/staff-imports/{id}/errors.csv` untuk laporan yang diaudit.
+
+Pratinjau kedaluwarsa setelah 24 jam dan tidak bisa dikonfirmasi. Hasil batch yang sudah committed tetap bisa dibaca/diulang tanpa membuat akun baru. Kedaluwarsa belum berarti penghapusan fisik data: tentukan retensi dan jalankan cleanup metadata sesuai kebijakan perusahaan sebelum produksi. Jangan menyimpan laporan kesalahan di tempat publik.

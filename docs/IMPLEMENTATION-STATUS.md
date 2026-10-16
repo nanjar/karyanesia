@@ -24,7 +24,6 @@ Implementasi awal berdasarkan sprint 1 PRD. Ini belum merupakan rilis lengkap v0
 
 ### Batas fondasi yang masih perlu diselesaikan
 
-- Impor CSV dua tahap (FR-02).
 - Pemindahan cabang/jabatan, administrasi scope banyak cabang, pengelolaan HR/operasional, dan manajemen role melalui UI.
 - Reset password, recovery/enrollment ulang MFA yang terotorisasi, serta alur email admin.
 - Job cleanup sesi/rate limit kedaluwarsa dan pemantauan operasional.
@@ -59,3 +58,19 @@ Referensi utama: [PRD v0.0.1](PRD-Karyanesia-v0.0.1.md).
 - Pemeriksaan format lulus dan audit dependency runtime tidak menemukan vulnerability pada lockfile milestone ini.
 - Pemeriksaan browser visual belum berhasil: executable Chromium tidak tersedia dan unduhan browser gagal. Jangan menganggap UI telah lolos pengujian visual atau aksesibilitas menyeluruh.
 - Uji PostgreSQL 16 sungguhan dijalankan oleh workflow CI, bukan disamakan dengan hasil PGlite lokal.
+
+## Milestone 2: impor staf CSV (FR-02)
+
+- Menu Impor staf CSV untuk OWNER/ADMIN, template UTF-8 dan pratinjau tanpa pembuatan akun.
+- Batas 1 MiB, 5.000 record, dan 16 KiB per record. Mendukung BOM, CRLF, serta nama berkutip/koma.
+- Validasi ID duplikat, kode cabang/jabatan, supervisor aktif dan kolom opsional email/tanggal mulai.
+- Semua akun CSV memiliki role STAFF. Impor tidak mengubah akun yang sudah terdaftar dan tidak menerima kolom role/tenant/password.
+- Konfirmasi eksplisit hanya menerapkan kandidat valid. Server memeriksa ulang referensi dan ID untuk perubahan sejak preview.
+- Lock batch, hasil tersimpan dan savepoint per record menjaga retry, batch tumpang tindih dan kegagalan parsial agar tidak menggandakan akun atau meninggalkan user tanpa membership.
+- Pratinjau berlaku 24 jam. Riwayat sepuluh batch terbaru tersedia untuk melanjutkan pemeriksaan setelah koneksi terputus.
+- Laporan kesalahan CSV menggunakan encoding UTF-8, escaping tanda kutip dan pencegahan formula spreadsheet.
+- Akun hasil impor menunggu aktivasi. Admin menerbitkan kode melalui tombol Kode baru di direktori staf, tanpa password default atau token massal dalam file.
+- Migrasi `002_staff_imports.sql` menambah metadata impor, email user dan tanggal mulai membership.
+- Suite lokal menjadi 26 integration tests, termasuk concurrent commit, overlap batch, batas payload dan validasi ulang saat data berubah.
+
+Batas yang masih berlaku: impor diproses dalam transaksi API, belum melalui worker job. Kinerja maksimal 5.000 staf belum diukur sebagai SLA. Preview kedaluwarsa memblokir commit, namun pembersihan fisik metadata/PII masih membutuhkan lifecycle retensi sebelum produksi. Verifikasi visual browser belum selesai.

@@ -1,5 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { api } from './api';
+import { StaffImportPanel } from '../components/staff-import-panel';
 import {
   ArrowUpRight,
   Building2,
@@ -15,6 +17,7 @@ import {
   X,
   BriefcaseBusiness,
   RefreshCw,
+  Upload,
 } from 'lucide-react';
 type Actor = {
   id: string;
@@ -50,24 +53,6 @@ const labels: Record<string, string> = {
   SUPERVISOR: 'Supervisor',
   STAFF: 'Staf',
 };
-async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
-  const res = await fetch('/api/v1/' + path, {
-    method,
-    credentials: 'same-origin',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    cache: 'no-store',
-  });
-  const data = await res
-    .json()
-    .catch(() => ({ message: 'Layanan belum tersedia. Periksa koneksi API.' }));
-  if (!res.ok) {
-    const error = new Error(data.message || 'Permintaan gagal.') as Error & { status: number };
-    error.status = res.status;
-    throw error;
-  }
-  return data;
-}
 export default function Page() {
   const [actor, setActor] = useState<Actor | null>(null),
     [loading, setLoading] = useState(true),
@@ -379,6 +364,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
     branches: 'Cabang perusahaan',
     jobs: 'Jabatan',
     audit: 'Riwayat aktivitas',
+    import: 'Impor staf CSV',
   };
   const nav = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
@@ -387,6 +373,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
       label: actor.role === 'STAFF' ? 'Profil staf' : 'Organisasi & staf',
       icon: Users,
     },
+    ...(admin ? [{ id: 'import', label: 'Impor staf CSV', icon: Upload }] : []),
     { id: 'branches', label: 'Cabang', icon: Building2 },
     { id: 'jobs', label: 'Jabatan', icon: BriefcaseBusiness },
     ...(admin ? [{ id: 'audit', label: 'Riwayat aktivitas', icon: ShieldCheck }] : []),
@@ -551,6 +538,9 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
             </div>
           ) : (
             <>
+              {tab === 'import' && admin && (
+                <StaffImportPanel onCommitted={load} onError={handleError} />
+              )}
               {tab === 'overview' && (
                 <>
                   <section className="stats" aria-label="Statistik organisasi">

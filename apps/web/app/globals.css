@@ -1143,3 +1143,143 @@ select:hover {
     border: 1px solid ButtonText;
   }
 }
+
+.import-workspace {
+  display: grid;
+  gap: 24px;
+}
+.import-body {
+  padding: 0 25px 25px;
+}
+.import-body.compact {
+  padding-bottom: 8px;
+}
+.import-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 28px;
+  padding: 0;
+  margin: 0 0 24px;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+.import-steps li {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+.import-steps li > span {
+  background: var(--primary-soft);
+  color: #1d4ed8;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+}
+.import-instructions {
+  background: rgb(239 246 255 / 70%);
+  padding: 20px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.import-instructions code,
+.import-reference code {
+  overflow-wrap: anywhere;
+}
+.import-instructions p {
+  margin-bottom: 14px;
+}
+.import-upload {
+  display: flex;
+  gap: 20px;
+  align-items: flex-end;
+  margin-top: 24px;
+}
+.import-upload label {
+  flex: 1;
+  margin: 0;
+}
+.import-upload input {
+  background: #fff;
+}
+.import-upload .primary {
+  margin-bottom: 1px;
+}
+.import-confirm {
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 20px;
+  background: rgb(239 246 255 / 65%);
+}
+.import-confirm label {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.import-confirm input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+.import-confirm .inline-help {
+  margin: 14px 0 0;
+}
+.import-reference {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.9;
+}
+.import-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 22px;
+}
+.import-toolbar label {
+  margin: 0;
+}
+.import-toolbar select {
+  min-width: 190px;
+}
+.import-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 25px;
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .import-body {
+    padding: 0 18px 20px;
+  }
+  .import-upload,
+  .import-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  .import-confirm,
+  .import-instructions {
+    padding: 16px;
+  }
+  .import-steps {
+    gap: 14px;
+    font-size: 12px;
+  }
+  .import-pagination {
+    padding: 18px;
+  }
+}

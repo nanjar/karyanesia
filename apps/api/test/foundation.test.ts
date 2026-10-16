@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
@@ -22,6 +22,7 @@ import {
   verifyOtp,
 } from '../src/crypto';
 import { setup } from '../src/setup';
+import { parseStaffCsv, csvCell } from '../src/staff-imports';
 const origin = 'http://localhost:3000',
   key = 'a'.repeat(64),
   password = 'a-unique-test-password-123';
@@ -53,7 +54,12 @@ before(async () => {
     const schema = 'test_' + randomUUID().replaceAll('-', '');
     pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
     await pool.query(`CREATE SCHEMA ${schema}`);
-    await pool.query(`SET search_path TO ${schema}`);
+    await pool.end();
+    pool = new Pool({
+      connectionString: process.env.TEST_DATABASE_URL,
+      max: 4,
+      options: `-c search_path=${schema}`,
+    });
     db = {
       query: (s: string, p?: any[]) => pool!.query(s, p),
       transaction: async (fn: any) => {
@@ -83,12 +89,12 @@ before(async () => {
       cleanup: () => engine!.close(),
     };
   }
-  const sql = await readFile(
-    resolve(__dirname, '../../../packages/database/migrations/001_foundation.sql'),
-    'utf8',
-  );
-  if (engine) await engine.exec(sql);
-  else await db.query(sql);
+  const migrationDir = resolve(__dirname, '../../../packages/database/migrations');
+  for (const filename of (await readdir(migrationDir)).filter((f) => f.endsWith('.sql')).sort()) {
+    const sql = await readFile(resolve(migrationDir, filename), 'utf8');
+    if (engine) await engine.exec(sql);
+    else await db.query(sql);
+  }
   const hash = await hashPassword(password);
   for (let i = 0; i < 2; i++) {
     const uid = randomUUID();
@@ -345,4 +351,215 @@ test('audit history is immutable at database level', async () => {
     () => db.query('DELETE FROM audit_events WHERE tenant_id=$1', [tenants[0]]),
     /append-only/,
   );
+});
+
+const importHeader =
+  'employee_number,full_name,branch_code,job_code,supervisor_employee_number,email,start_date';
+const staffCsv = (id: string, name = 'Nama Staf', branch = 'BR1', job = 'CASHIER') =>
+  `${importHeader}\r\n${id},${name},${branch},${job},,,\r\n`;
+let importBatch = '',
+  importedMembership = '';
+test('CSV parser accepts BOM, CRLF, quoted names and reports row shape errors', () => {
+  const rows = parseStaffCsv('\uFEFF' + staffCsv('CSV1', '"Rina, Ayu"'));
+  assert.equal(rows[0].data.full_name, 'Rina, Ayu');
+  assert.equal(rows[0].row_number, 2);
+  assert.deepEqual(rows[0].errors, []);
+  const bad = parseStaffCsv(importHeader + '\nID,Incomplete\n');
+  assert.ok(bad[0].errors.length);
+  assert.throws(
+    () => parseStaffCsv('employee_number,employee_number,branch_code,job_code\nX,X,BR1,CASHIER'),
+    /Header/,
+  );
+  assert.throws(() => parseStaffCsv(importHeader + ',role\nX,X,BR1,CASHIER,,,,ADMIN'), /Header/);
+  assert.throws(() => parseStaffCsv(importHeader + '\nX,"Unclosed,BR1,CASHIER'), /Format CSV/);
+  assert.throws(
+    () =>
+      parseStaffCsv(
+        importHeader +
+          '\n' +
+          Array.from({ length: 5001 }, (_, i) => `ID${i},Name,BR1,CASHIER,,,`).join('\n'),
+      ),
+    /5.000/,
+  );
+});
+test('import preview validates mixed rows without creating accounts', async () => {
+  const before = (await db.query('SELECT count(*)::int n FROM users')).rows[0].n;
+  const csv =
+    importHeader +
+    '\r\n' +
+    [
+      'IMP001,"Rina, Ayu",BR1,CASHIER,ADMIN,rina@example.test,2026-10-01',
+      'FAIL01,=1+1,MISSING,CASHIER,,,',
+      'ADMIN,Existing employee,BR1,CASHIER,,,',
+      'IMP002,Invalid job,BR1,MISSING,,,',
+    ].join('\r\n');
+  const r = await post('staff-imports/preview', cookies[0]).send({ csv }).expect(201);
+  importBatch = r.body.id;
+  assert.equal(r.body.total, 4);
+  assert.equal(r.body.valid, 1);
+  assert.equal(r.body.invalid, 3);
+  assert.equal((await db.query('SELECT count(*)::int n FROM users')).rows[0].n, before);
+  await post(`staff-imports/${importBatch}/commit`, cookies[0])
+    .send({ confirm: false })
+    .expect(422);
+});
+test('staff import references and history never cross tenant boundaries', async () => {
+  await get(`staff-imports/${importBatch}`, cookies[1]).expect(404);
+  await get(`staff-imports/${importBatch}/errors.csv`, cookies[1]).expect(404);
+  await post(`staff-imports/${importBatch}/commit`, cookies[1]).send({ confirm: true }).expect(404);
+  await post('jobs', cookies[1]).send({ code: 'ONLY_B', name: 'Tenant B job' }).expect(201);
+  const r = await post('staff-imports/preview', cookies[0])
+    .send({ csv: staffCsv('FOREIGN1', 'Foreign job', 'BR1', 'ONLY_B') })
+    .expect(201);
+  assert.equal(r.body.valid, 0);
+  const b = await post('staff-imports/preview', cookies[1])
+    .send({ csv: staffCsv('TENANTB') })
+    .expect(201);
+  const history = await get('staff-imports', cookies[0]).expect(200);
+  assert.ok(!history.body.some((v: any) => v.id === b.body.id));
+  const sup = await post('auth/login')
+    .send({ company_code: 'company-0', employee_number: 'SUP1', password })
+    .expect(200);
+  await post('staff-imports/preview', cookie(sup))
+    .send({ csv: staffCsv('DENIED') })
+    .expect(403);
+  await get(`staff-imports/${importBatch}/errors.csv`, cookie(sup)).expect(403);
+});
+test('error CSV escapes spreadsheet formulas and contains only invalid rows', async () => {
+  const r = await get(`staff-imports/${importBatch}/errors.csv`, cookies[0]).expect(200);
+  assert.match(r.headers['content-type'], /text\/csv/);
+  assert.ok(r.text.includes('"\'=1+1"'));
+  assert.ok(!r.text.includes('IMP001'));
+  assert.equal(csvCell('  =1+1'), '"\'  =1+1"');
+  assert.equal(csvCell('@SUM(A1)'), '"\'@SUM(A1)"');
+  assert.equal(csvCell('Nama "A"'), '"Nama ""A"""');
+});
+test('mixed import creates only valid staff, stores optional fields and replays safely', async () => {
+  const r = await post(`staff-imports/${importBatch}/commit`, cookies[0])
+    .send({ confirm: true })
+    .expect(200);
+  assert.deepEqual(
+    { created: r.body.created, failed: r.body.failed, total: r.body.total },
+    { created: 1, failed: 3, total: 4 },
+  );
+  const again = await post(`staff-imports/${importBatch}/commit`, cookies[0])
+    .send({ confirm: true })
+    .expect(200);
+  assert.deepEqual(again.body, r.body);
+  const found = await db.query(
+    `SELECT m.id,m.role,m.start_date::text start_date,u.email,u.password_hash FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=$1 AND m.employee_number='IMP001'`,
+    [tenants[0]],
+  );
+  assert.equal(found.rows.length, 1);
+  importedMembership = found.rows[0].id;
+  assert.equal(found.rows[0].role, 'STAFF');
+  assert.equal(found.rows[0].email, 'rina@example.test');
+  assert.equal(found.rows[0].start_date, '2026-10-01');
+  assert.equal(found.rows[0].password_hash, null);
+  assert.equal(
+    (
+      await db.query('SELECT count(*)::int n FROM activation_tokens WHERE membership_id=$1', [
+        importedMembership,
+      ])
+    ).rows[0].n,
+    0,
+  );
+  const repeated = await post('staff-imports/preview', cookies[0])
+    .send({ csv: staffCsv('IMP001') })
+    .expect(201);
+  assert.equal(repeated.body.valid, 0);
+  await post(`staff-imports/${repeated.body.id}/commit`, cookies[0])
+    .send({ confirm: true })
+    .expect(422);
+});
+test('duplicate IDs inside one CSV are all rejected and role headers cannot escalate', async () => {
+  const csv = importHeader + '\nDUP1,One,BR1,CASHIER,,,\nDUP1,Two,BR1,CASHIER,,,\n';
+  const r = await post('staff-imports/preview', cookies[0]).send({ csv }).expect(201);
+  assert.equal(r.body.valid, 0);
+  assert.equal(r.body.invalid, 2);
+  await post('staff-imports/preview', cookies[0])
+    .send({ csv: staffCsv('ROLE') + '', tenant_id: tenants[1] })
+    .expect(422);
+  await post('staff-imports/preview', cookies[0])
+    .send({ csv: importHeader + ',role\nROLE,Role,BR1,CASHIER,,,,ADMIN' })
+    .expect(422);
+});
+test('expired preview cannot create accounts', async () => {
+  const p = await post('staff-imports/preview', cookies[0])
+    .send({ csv: staffCsv('EXPIRED1') })
+    .expect(201);
+  await db.query("UPDATE staff_imports SET expires_at=now()-interval '1 minute' WHERE id=$1", [
+    p.body.id,
+  ]);
+  await post(`staff-imports/${p.body.id}/commit`, cookies[0]).send({ confirm: true }).expect(410);
+  assert.equal(
+    (await db.query("SELECT count(*)::int n FROM memberships WHERE employee_number='EXPIRED1'"))
+      .rows[0].n,
+    0,
+  );
+});
+test('confirmation revalidates references and IDs that changed after preview', async () => {
+  const job = await post('jobs', cookies[0])
+    .send({ code: 'TEMP_IMPORT', name: 'Temporary' })
+    .expect(201);
+  const csv = importHeader + '\nLATE1,Name,BR1,CASHIER,,,\nDELETED_REF,Name,BR1,TEMP_IMPORT,,,\n';
+  const p = await post('staff-imports/preview', cookies[0]).send({ csv }).expect(201);
+  assert.equal(p.body.valid, 2);
+  await post('memberships', cookies[0])
+    .send({
+      employee_number: 'LATE1',
+      full_name: 'Created after preview',
+      branch_id: branches[0],
+      job_id: jobs[0],
+    })
+    .expect(201);
+  await db.query('DELETE FROM jobs WHERE id=$1 AND tenant_id=$2', [job.body.id, tenants[0]]);
+  const result = await post(`staff-imports/${p.body.id}/commit`, cookies[0])
+    .send({ confirm: true })
+    .expect(200);
+  assert.equal(result.body.created, 0);
+  assert.equal(result.body.failed, 2);
+});
+test('concurrent confirmations and overlapping batches do not create orphan or duplicate users', async () => {
+  const p = await post('staff-imports/preview', cookies[0])
+    .send({ csv: staffCsv('CONCURRENT1') })
+    .expect(201);
+  const both = await Promise.all([
+    post(`staff-imports/${p.body.id}/commit`, cookies[0]).send({ confirm: true }),
+    post(`staff-imports/${p.body.id}/commit`, cookies[0]).send({ confirm: true }),
+  ]);
+  assert.ok(both.every((r) => r.status === 200));
+  assert.deepEqual(both[0].body, both[1].body);
+  const p1 = await post('staff-imports/preview', cookies[0])
+    .send({ csv: staffCsv('OVERLAP1') })
+    .expect(201);
+  const p2 = await post('staff-imports/preview', cookies[0])
+    .send({ csv: staffCsv('OVERLAP1') })
+    .expect(201);
+  const before = (await db.query('SELECT count(*)::int n FROM users')).rows[0].n;
+  const results = await Promise.all([
+    post(`staff-imports/${p1.body.id}/commit`, cookies[0]).send({ confirm: true }),
+    post(`staff-imports/${p2.body.id}/commit`, cookies[0]).send({ confirm: true }),
+  ]);
+  assert.ok(results.every((r) => r.status === 200));
+  assert.equal(
+    results.reduce((n, r) => n + r.body.created, 0),
+    1,
+  );
+  assert.equal((await db.query('SELECT count(*)::int n FROM users')).rows[0].n, before + 1);
+});
+test('CSV upload supports more than 100 KiB and enforces file and JSON limits', async () => {
+  const csv =
+    importHeader +
+    '\n' +
+    Array.from({ length: 1000 }, (_, i) => `SIZE${i},${'N'.repeat(110)},BR1,CASHIER,,,`).join('\n');
+  assert.ok(Buffer.byteLength(csv) > 100 * 1024);
+  const p = await post('staff-imports/preview', cookies[0]).send({ csv }).expect(201);
+  assert.equal(p.body.valid, 1000);
+  await post('staff-imports/preview', cookies[0])
+    .send({ csv: 'é'.repeat(600000) })
+    .expect(422);
+  await post('staff-imports/preview', cookies[0])
+    .send({ csv: 'x'.repeat(3 * 1024 * 1024) })
+    .expect(413);
 });

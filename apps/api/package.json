@@ -17,6 +17,7 @@
     "@nestjs/platform-express": "^11.1.0",
     "@nestjs/swagger": "^11.2.0",
     "cookie-parser": "^1.4.7",
+    "csv-parse": "^7.0.3",
     "dotenv": "^17.2.0",
     "helmet": "^8.1.0",
     "pg": "^8.16.0",

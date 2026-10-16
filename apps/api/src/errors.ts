@@ -16,14 +16,18 @@ export class ErrorFilter implements ExceptionFilter {
         ? e.getStatus()
         : e instanceof ZodError
           ? 422
-          : ['23505', '23503', '23514', '22P02'].includes(e.code)
-            ? 422
-            : 500;
+          : e.type === 'entity.too.large'
+            ? 413
+            : ['23505', '23503', '23514', '22P02'].includes(e.code)
+              ? 422
+              : 500;
     const codes: Record<number, string> = {
       401: 'UNAUTHENTICATED',
       403: 'FORBIDDEN',
       404: 'NOT_FOUND',
       409: 'CONFLICT',
+      410: 'EXPIRED',
+      413: 'PAYLOAD_TOO_LARGE',
       422: 'VALIDATION_ERROR',
       429: 'RATE_LIMITED',
       500: 'INTERNAL_ERROR',
