@@ -68,7 +68,8 @@ export function LearningPanel({
     <section className="learning-panel">
       <div className="alert">
         Materi teks, tautan video YouTube & kuis teori. Penugasan tersedia pada menu Tugas
-        onboarding. Gambar dan penilaian praktik belum tersedia. Lulus teori belum berarti kompeten.
+        onboarding. Gambar belum tersedia; praktik dinilai melalui tugas. Lulus teori belum berarti
+        kompeten.
       </div>
       {notice && (
         <p role="status" className="alert success">
@@ -216,7 +217,7 @@ export function LearningPanel({
                       answers,
                     });
                     setNotice(
-                      `Nilai ${r.score.toFixed(1)}% — ${r.passed ? 'Lulus teori' : 'Perlu belajar lagi'}. Praktik belum dinilai.`,
+                      `Nilai ${r.score.toFixed(1)}% — ${r.passed ? 'Lulus teori' : 'Perlu belajar lagi'}. Nilai teori tidak mengubah hasil praktik.`,
                     );
                     setDetail(await api<Detail>('learning/' + detail.id));
                     setKey(crypto.randomUUID());

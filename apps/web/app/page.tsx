@@ -432,7 +432,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
           <span className="nav-heading">TAHAP BERIKUTNYA</span>
           <span>
             <GraduationCap size={18} />
-            Observasi praktik
+            Bukti & permintaan review
           </span>
           <span>
             <ClipboardCheck size={18} />
@@ -558,6 +558,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
                 <OnboardingAssignmentsPanel
                   admin={admin}
                   actorId={actor.id}
+                  canAssess={admin || actor.role === 'SUPERVISOR'}
                   onError={handleError}
                 />
               )}

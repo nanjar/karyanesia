@@ -158,7 +158,7 @@ Buka **Materi & kuis** sebagai OWNER/ADMIN. Isi judul, tujuan, transkrip dan tau
 
 Untuk memperbaiki materi, pilih versi pada pustaka lalu **Revisi ke versi baru**. Konfirmasi penggantian editor, ubah isi pada editor di bawah dan simpan. Versi sebelumnya beserta percobaan staf tidak berubah. Revisi perlu diterbitkan tersendiri. **Arsipkan versi** menghentikan akses pustaka staf dan submit baru tanpa menghapus histori. Arsip tidak membatalkan hasil yang sudah tersimpan.
 
-Materi yang belum tersimpan hilang jika halaman ditutup. Kegagalan simpan mempertahankan input selama halaman tetap terbuka. Gambar pada soal, jalur onboarding dan observasi praktik belum tersedia; hasil kuis hanya menunjukkan kelulusan teori.
+Materi yang belum tersimpan hilang jika halaman ditutup. Kegagalan simpan mempertahankan input selama halaman tetap terbuka. Gambar pada soal belum tersedia; hasil kuis hanya menunjukkan kelulusan teori, sedangkan praktik disahkan melalui tugas onboarding.
 
 ### Mendampingi staf yang gagal kuis
 
@@ -172,7 +172,7 @@ Sebagai OWNER/ADMIN, buka **Jalur onboarding**. Siapkan dan terbitkan modul di *
 
 Simpan draft lalu tinjau detail sebelum **Terbitkan jalur**. Publikasi akan ditolak jika salah satu modul sudah diarsipkan; buat revisi dan pilih penggantinya. **Revisi ke versi baru** menyalin isi ke editor dan penyimpanan menghasilkan draft baru. **Arsipkan jalur** menyimpan versi lama beserta referensinya. Perubahan editor yang belum disimpan belum dipersistenkan dan hilang jika halaman ditutup.
 
-Penugasan staf dan tenggat aktual tersedia pada menu Tugas onboarding. Pembatasan tugas berdasarkan prasyarat, observasi praktik dan status penyelesaian onboarding belum berjalan. Video setiap modul tetap berupa tautan YouTube saja.
+Penugasan staf dan tenggat aktual tersedia pada menu Tugas onboarding. Observasi praktik dan status penyelesaian tersedia pada tugas; akses kuis berdasarkan prasyarat belum dibatasi. Video setiap modul tetap berupa tautan YouTube saja.
 
 ### Menugaskan onboarding
 
@@ -180,7 +180,7 @@ Buka **Tugas onboarding** sebagai OWNER/ADMIN. Pilih versi jalur terbit, tanggal
 
 Saat koneksi gagal pada konfirmasi, ulangi pratinjau yang sama. Server mengembalikan hasil batch lama tanpa menggandakan tugas. Hindari membuat batch baru hanya karena respons lambat: batch baru boleh menugaskan staf yang sama lagi. Pratinjau berlaku 24 jam; perubahan cabang, jabatan, status aktif atau zona waktu setelah preview dapat meminta pratinjau baru.
 
-Staf membuka **Tugas onboarding** untuk melihat versi jalur, langkah dan tenggat. H+0 berlangsung sampai akhir tanggal mulai di zona waktu cabang. Label tenggat menggunakan waktu cabang. Lewat tenggat tidak menutup tugas. Admin dapat membatalkan tugas dengan alasan; histori tetap tersedia. Progres teori dihitung otomatis, tetapi penilaian praktik belum berjalan sehingga tugas belum dapat berubah menjadi completed.
+Staf membuka **Tugas onboarding** untuk melihat versi jalur, langkah dan tenggat. H+0 berlangsung sampai akhir tanggal mulai di zona waktu cabang. Label tenggat menggunakan waktu cabang. Lewat tenggat tidak menutup tugas. Admin dapat membatalkan tugas dengan alasan; histori tetap tersedia. Progres teori dan praktik dihitung otomatis; completed hanya jika seluruh teori dan praktik kompeten.
 
 ### Membaca progres teori pada tugas
 
@@ -188,7 +188,7 @@ Di **Tugas onboarding**, status berubah dari **Ditugaskan** ke **Sedang belajar*
 
 Staf dapat memilih **Buka materi & kuis** dari tugasnya sendiri. Hasil submit memperbarui progres tugas; tombol **Perbarui tugas** memuat perubahan dari sesi/perangkat lain. Jatah tiga percobaan dan reset supervisor tetap berlaku per staf/versi modul, dibagi dengan pustaka belajar, bukan jatah baru pada setiap assignment. Versi yang diarsipkan tidak dapat dibuka; hubungi admin untuk pengganti, sementara bukti lama tetap terlihat.
 
-Prasyarat belum membatasi akses dan praktik belum dapat dinilai. Angka teori lulus tidak boleh dibaca sebagai penyelesaian onboarding. Tugas cancelled tetap dibatalkan dan histori teorinya tidak mencakup kuis sesudah waktu pembatalan. Bukti teori belum memiliki masa kedaluwarsa otomatis; gunakan versi baru jika konten berubah atau perlu diuji ulang.
+Prasyarat belum membatasi akses kuis, tetapi kompetensi praktik prasyarat diperiksa saat pengesahan observasi. Angka teori lulus tidak boleh dibaca sebagai penyelesaian onboarding. Tugas cancelled tetap dibatalkan dan histori teorinya tidak mencakup kuis sesudah waktu pembatalan. Bukti teori belum memiliki masa kedaluwarsa otomatis; gunakan versi baru jika konten berubah atau perlu diuji ulang.
 
 ### Menyiapkan rubrik praktik
 
@@ -196,4 +196,16 @@ Sebagai OWNER/ADMIN, buka **Rubrik praktik**, isi judul dan petunjuk observasi, 
 
 Pada **Jalur onboarding**, pilih versi rubrik terbit di setiap langkah sebelum menyimpan editor. Untuk jalur lama, pilih **Revisi ke versi baru**, lengkapi rubrik lalu terbitkan ulang. Rubrik tersalin ke snapshot jalur dan selanjutnya ke tugas staf. Perubahan rubrik harus melalui revisi versi baru; tugas lama mempertahankan kriteria asli. Arsip rubrik menghentikan pemakaiannya untuk penugasan baru tanpa menghapus snapshot tugas lama.
 
-Tugas yang dibuat sebelum ada rubrik tetap tersimpan dan diberi pesan belum memiliki kriteria praktik. Buat versi jalur dengan rubrik dan penugasan baru, lalu batalkan tugas lama dengan alasan jika sesuai kebijakan operasional. Tidak ada perubahan snapshot atau migrasi hasil kompetensi otomatis. Form observasi/pengesahan belum tersedia pada tahap ini.
+Tugas yang dibuat sebelum ada rubrik tetap tersimpan dan diberi pesan belum memiliki kriteria praktik. Buat versi jalur dengan rubrik dan penugasan baru, lalu batalkan tugas lama dengan alasan jika sesuai kebijakan operasional. Tidak ada perubahan snapshot atau migrasi hasil kompetensi otomatis. Form observasi dan pengesahan tersedia di Tugas onboarding bagi penilai yang memenuhi scope.
+
+### Mengisi dan mengesahkan observasi praktik
+
+Sebagai SUPERVISOR (scope cabang) atau OWNER/ADMIN (seluruh tenant), buka **Tugas onboarding**, pilih staf dan langkah dengan rubrik. Setelah tanggal mulai tiba, teori langkah tersebut harus lulus dan praktik prasyarat harus kompeten. Penilai tidak boleh menilai dirinya sendiri.
+
+Pilih **Isi observasi praktik**, jawab seluruh item sesuai pengamatan, isi komentar minimal 10 karakter dan arahan latihan bila ada item wajib/kritis gagal. **Sahkan observasi** menyimpan record permanen; server menentukan competent atau needs_practice. Item opsional yang gagal tidak menghalangi kompeten. Tidak ada status hasil yang dapat diisi klien.
+
+Untuk penilaian ulang atau koreksi, gunakan hasil terbaru sebagai dasar dan isi alasan minimal 10 karakter. Penilaian baru menunjuk hasil sebelumnya tanpa mengubah histori. Jika penilai lain menyimpan lebih dahulu, muat ulang tugas dan tinjau hasil terakhir sebelum menilai kembali. Pengiriman ulang dengan key yang sama mengembalikan hasil yang sama. Sesudah konfirmasi berhasil, hindari mengisi ulang hanya karena tampilan lambat; gunakan Perbarui tugas dan Muat riwayat observasi.
+
+**Muat riwayat observasi** tersedia bagi staf pemilik tugas dan pengelola dalam scope; tampil maksimal 100 record terbaru. Seluruh teori dan praktik kompeten menghasilkan **Selesai**. Koreksi menjadi needs_practice dapat membuka tugas kembali dan memunculkan lewat tenggat. Arsip rubrik tidak mengubah kriteria tugas lama, sehingga snapshot tersebut tetap dapat dinilai. Tugas tanpa rubrik belum dapat dinilai dan tugas cancelled menolak penilaian baru.
+
+Belum tersedia pengajuan praktik/review oleh staf, bukti foto/file, notifikasi atau pembatasan akses kuis sesuai prasyarat. Pengesahan ini merupakan satu langkah simpan hasil yang sudah final; belum ada draft observasi terpisah.

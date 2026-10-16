@@ -31,9 +31,18 @@ export async function assignmentProgress(db: Executor, tenant: string, assignmen
     )
   ).rows;
   const availability = new Map(versions.map((r) => [r.id, r.status === 'published']));
+  const assessments = (
+    await db.query(
+      `SELECT DISTINCT ON (assignment_id,step_position) assignment_id,step_position,id,outcome,sequence FROM practice_assessments WHERE tenant_id=$1 AND assignment_id=ANY($2::uuid[]) ORDER BY assignment_id,step_position,sequence DESC`,
+      [tenant, assignments.map((a) => a.id)],
+    )
+  ).rows;
+  const practice = new Map(assessments.map((r) => [r.assignment_id + ':' + r.step_position, r]));
   return assignments.map((a) => {
     const steps = a.snapshot.steps.map((s: any) => {
       const result = index.get(a.id + ':' + s.version_id);
+      const observation = practice.get(a.id + ':' + s.position);
+      const competent = observation?.outcome === 'competent';
       return {
         position: s.position,
         version_id: s.version_id,
@@ -41,28 +50,39 @@ export async function assignmentProgress(db: Executor, tenant: string, assignmen
         attempts: result ? Number(result.attempts) : 0,
         best_score: result ? Number(result.best_score) : null,
         passed_at: result?.passed_at ?? null,
-        practice_status: 'not_assessed',
+        practice_status: observation?.outcome ?? 'not_assessed',
+        latest_assessment_id: observation?.id ?? null,
+        assessment_sequence: observation?.sequence ?? 0,
         module_available: availability.get(s.version_id) === true,
-        overdue: a.status !== 'cancelled' && new Date(s.due_at).getTime() <= Date.now(),
+        overdue:
+          a.status !== 'cancelled' &&
+          !(result?.passed_at && competent) &&
+          new Date(s.due_at).getTime() <= Date.now(),
       };
     });
     const theoryPassed = steps.filter((s: any) => s.theory_status === 'passed').length;
+    const practicePassed = steps.filter((s: any) => s.practice_status === 'competent').length;
+    const completedSteps = steps.filter(
+      (s: any) => s.practice_status === 'competent' && s.theory_status === 'passed',
+    ).length;
     const status =
       a.status === 'cancelled'
         ? 'cancelled'
-        : theoryPassed === steps.length
-          ? 'awaiting_assessment'
-          : steps.some((s: any) => s.attempts > 0)
-            ? 'in_progress'
-            : 'assigned';
+        : completedSteps === steps.length
+          ? 'completed'
+          : theoryPassed === steps.length
+            ? 'awaiting_assessment'
+            : steps.some((s: any) => s.attempts > 0)
+              ? 'in_progress'
+              : 'assigned';
     return {
       ...a,
       status,
       progress: {
         theory_passed: theoryPassed,
         total: steps.length,
-        practice_passed: 0,
-        completed_steps: 0,
+        practice_passed: practicePassed,
+        completed_steps: completedSteps,
         overdue: steps.some((s: any) => s.overdue),
         steps,
       },

@@ -57,8 +57,8 @@ export function PracticeRubricsPanel({ onError }: { onError: (e: Error) => void 
   return (
     <section className="learning-panel">
       <div className="alert">
-        Siapkan rubrik, terbitkan, lalu pilih pada langkah jalur onboarding. Form observasi dan
-        pengesahan hasil praktik belum tersedia. Rubrik tidak otomatis meluluskan staf.
+        Siapkan rubrik, terbitkan, lalu pilih pada langkah jalur onboarding. Observasi disahkan
+        melalui Tugas onboarding. Rubrik tidak otomatis meluluskan staf.
       </div>
       {notice && (
         <p role="status" className="alert success">

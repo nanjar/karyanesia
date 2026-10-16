@@ -6,7 +6,7 @@ Platform B2B SaaS untuk onboarding, pelatihan mikro, SOP harian, dan pengembanga
 
 ## Status
 
-Implementasi dimulai pada milestone fondasi organisasi: autentikasi multi-tenant, MFA admin, aktivasi staf, scope cabang, direktori staf, impor CSV dua tahap dan audit. Ini belum rilis lengkap v0.0.1. Fondasi materi teks berversi dan kuis teori tersedia. Video menggunakan tautan YouTube saja. Editor jalur onboarding berversi tersedia bagi admin. Penugasan staf dengan pratinjau target dan tenggat tersedia. Progres teori dihitung dari versi modul yang sama. Rubrik praktik berversi dan snapshot kriterianya tersedia. Pengisian/pengesahan observasi, penerapan prasyarat pada tugas dan SOP masih tahap berikutnya.
+Implementasi dimulai pada milestone fondasi organisasi: autentikasi multi-tenant, MFA admin, aktivasi staf, scope cabang, direktori staf, impor CSV dua tahap dan audit. Ini belum rilis lengkap v0.0.1. Fondasi materi teks berversi dan kuis teori tersedia. Video menggunakan tautan YouTube saja. Editor jalur onboarding berversi tersedia bagi admin. Penugasan staf dengan pratinjau target dan tenggat tersedia. Progres teori dihitung dari versi modul yang sama. Rubrik praktik berversi dan snapshot kriterianya tersedia. Observasi praktik dengan histori koreksi dan status selesai tugas tersedia. Pembatasan akses kuis berdasarkan prasyarat, bukti/review dan SOP masih tahap berikutnya.
 
 - [Panduan instalasi dan development](docs/DEVELOPMENT.md)
 - [Status implementasi dan pekerjaan berikutnya](docs/IMPLEMENTATION-STATUS.md)

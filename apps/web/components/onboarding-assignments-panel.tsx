@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api } from '../app/api';
+import { PracticeObservation, PracticeHistory } from './practice-observation';
 import { LearningPanel } from './learning-panel';
 type Assignment = {
   id: string;
@@ -15,6 +16,7 @@ type Assignment = {
       attempts: number;
       best_score: number | null;
       practice_status: string;
+      latest_assessment_id: string | null;
       module_available: boolean;
       overdue: boolean;
     }[];
@@ -60,10 +62,12 @@ type Preview = {
 export function OnboardingAssignmentsPanel({
   admin,
   actorId,
+  canAssess,
   onError,
 }: {
   admin: boolean;
   actorId: string;
+  canAssess: boolean;
   onError: (e: Error) => void;
 }) {
   const [items, setItems] = useState<Assignment[]>([]),
@@ -80,8 +84,9 @@ export function OnboardingAssignmentsPanel({
     <section className="learning-panel">
       <div className="alert">
         Progres teori dihitung dari hasil kuis pada versi modul yang sama, termasuk hasil sebelum
-        penugasan. Praktik belum dinilai dan pembatasan prasyarat belum aktif; onboarding belum
-        dapat selesai otomatis.
+        penugasan. Praktik mengikuti rubrik snapshot dan disahkan penilai dalam scope. Tugas selesai
+        hanya setelah seluruh teori dan praktik lulus. Pembatasan akses kuis berdasarkan prasyarat
+        belum aktif.
       </div>
       {notice && (
         <p role="status" className="alert success">
@@ -116,6 +121,7 @@ export function OnboardingAssignmentsPanel({
                     in_progress: 'Sedang belajar',
                     awaiting_assessment: 'Menunggu penilaian praktik',
                     cancelled: 'Dibatalkan',
+                    completed: 'Selesai',
                   } as Record<string, string>
                 )[item.status]
               }
@@ -137,7 +143,16 @@ export function OnboardingAssignmentsPanel({
                     {new Date(s.due_at).toLocaleString('id-ID', { timeZone: item.timezone })} (
                     {item.timezone}){item.progress.steps[i].overdue ? ' · Lewat tenggat' : ''} ·{' '}
                     {s.prerequisite ? `Prasyarat langkah ${s.prerequisite}` : 'Tanpa prasyarat'} ·
-                    Praktik wajib, belum dinilai
+                    Praktik:{' '}
+                    {
+                      (
+                        {
+                          not_assessed: 'Belum dinilai',
+                          competent: 'Kompeten',
+                          needs_practice: 'Perlu latihan',
+                        } as Record<string, string>
+                      )[item.progress.steps[i].practice_status]
+                    }
                   </p>
                   {s.practice_rubric ? (
                     <details>
@@ -153,7 +168,6 @@ export function OnboardingAssignmentsPanel({
                           </li>
                         ))}
                       </ul>
-                      <p>Form observasi dan pengesahan belum tersedia.</p>
                     </details>
                   ) : (
                     <p>
@@ -177,6 +191,31 @@ export function OnboardingAssignmentsPanel({
                       ? ` · Nilai terbaik ${item.progress.steps[i].best_score}%`
                       : ''}
                   </p>
+                  {canAssess &&
+                    item.membership_id !== actorId &&
+                    item.status !== 'cancelled' &&
+                    s.practice_rubric &&
+                    (item.progress.steps[i].theory_status === 'passed' &&
+                    (!s.prerequisite ||
+                      item.progress.steps[s.prerequisite - 1].practice_status === 'competent') ? (
+                      <PracticeObservation
+                        key={item.progress.steps[i].latest_assessment_id ?? 'first'}
+                        assignmentId={item.id}
+                        position={s.position}
+                        rubric={s.practice_rubric}
+                        latestId={item.progress.steps[i].latest_assessment_id}
+                        onError={onError}
+                        onSaved={async () => {
+                          setNotice('Observasi tersimpan. Progres tugas diperbarui.');
+                          await load();
+                        }}
+                      />
+                    ) : (
+                      <p>
+                        Observasi dapat disahkan setelah teori langkah ini lulus dan praktik
+                        prasyarat kompeten.
+                      </p>
+                    ))}
                   {item.membership_id === actorId &&
                     item.status !== 'cancelled' &&
                     (item.progress.steps[i].module_available ? (
@@ -192,6 +231,7 @@ export function OnboardingAssignmentsPanel({
                 </li>
               ))}
             </ol>
+            <PracticeHistory assignmentId={item.id} onError={onError} />
             {admin && item.status !== 'cancelled' && (
               <form
                 className="learning-editor"
