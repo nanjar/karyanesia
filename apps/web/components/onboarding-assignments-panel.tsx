@@ -20,6 +20,9 @@ type Assignment = {
       latest_assessment_id: string | null;
       practice_request: RequestState | null;
       module_available: boolean;
+      learning_available: boolean;
+      practice_eligible: boolean;
+      learning_locked_reason: string | null;
       overdue: boolean;
     }[];
   };
@@ -75,7 +78,7 @@ export function OnboardingAssignmentsPanel({
   const [items, setItems] = useState<Assignment[]>([]),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(''),
-    [module, setModule] = useState<string | null>(null),
+    [module, setModule] = useState<{ versionId: string; assignmentId: string } | null>(null),
     [onlyPending, setOnlyPending] = useState(false);
   async function load() {
     setItems(
@@ -94,8 +97,8 @@ export function OnboardingAssignmentsPanel({
       <div className="alert">
         Progres teori dihitung dari hasil kuis pada versi modul yang sama, termasuk hasil sebelum
         penugasan. Praktik mengikuti rubrik snapshot dan disahkan penilai dalam scope. Tugas selesai
-        hanya setelah seluruh teori dan praktik lulus. Pembatasan akses kuis berdasarkan prasyarat
-        belum aktif.
+        hanya setelah seluruh teori dan praktik lulus. Akses materi/kuis mengikuti tanggal mulai dan
+        seluruh rantai prasyarat tugas.
       </div>
       {notice && (
         <p role="status" className="alert success">
@@ -237,9 +240,7 @@ export function OnboardingAssignmentsPanel({
                   {item.membership_id === actorId &&
                     item.status !== 'cancelled' &&
                     s.practice_rubric &&
-                    item.progress.steps[i].theory_status === 'passed' &&
-                    (!s.prerequisite ||
-                      item.progress.steps[s.prerequisite - 1].practice_status === 'competent') &&
+                    item.progress.steps[i].practice_eligible &&
                     item.progress.steps[i].practice_request?.status !== 'pending' && (
                       <PracticeRequest
                         key={`${item.progress.steps[i].latest_assessment_id ?? 'none'}-${item.progress.steps[i].practice_request?.id ?? 'none'}`}
@@ -258,9 +259,7 @@ export function OnboardingAssignmentsPanel({
                     item.membership_id !== actorId &&
                     item.status !== 'cancelled' &&
                     s.practice_rubric &&
-                    (item.progress.steps[i].theory_status === 'passed' &&
-                    (!s.prerequisite ||
-                      item.progress.steps[s.prerequisite - 1].practice_status === 'competent') ? (
+                    (item.progress.steps[i].practice_eligible ? (
                       <PracticeObservation
                         key={item.progress.steps[i].latest_assessment_id ?? 'first'}
                         assignmentId={item.id}
@@ -281,14 +280,19 @@ export function OnboardingAssignmentsPanel({
                     ))}
                   {item.membership_id === actorId &&
                     item.status !== 'cancelled' &&
-                    (item.progress.steps[i].module_available ? (
-                      <button className="secondary" onClick={() => setModule(s.version_id)}>
+                    (item.progress.steps[i].learning_available ? (
+                      <button
+                        className="secondary"
+                        onClick={() =>
+                          setModule({ versionId: s.version_id, assignmentId: item.id })
+                        }
+                      >
                         Buka materi & kuis
                       </button>
                     ) : (
                       <p>
-                        Versi materi telah diarsipkan. Hubungi admin untuk tindak lanjut; bukti
-                        teori lama tetap tersimpan.
+                        {item.progress.steps[i].learning_locked_reason} Bukti teori lama tetap
+                        tersimpan.
                       </p>
                     ))}
                 </li>
@@ -333,10 +337,11 @@ export function OnboardingAssignmentsPanel({
             Tutup materi
           </button>
           <LearningPanel
-            key={module}
+            key={module.assignmentId + module.versionId}
             admin={false}
             canReset={false}
-            initialVersion={module}
+            initialVersion={module.versionId}
+            assignmentId={module.assignmentId}
             onError={onError}
             onAssessed={load}
           />

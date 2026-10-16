@@ -1741,7 +1741,7 @@ test('practice checks theory and prerequisite competence and corrections can reo
     .expect(409);
   await post(`learning/${module}/attempts`, learnerCookie)
     .send({ idempotency_key: randomUUID(), answers: [0] })
-    .expect(201);
+    .expect(403);
   await post(`onboarding-assignments/${taskId}/assessments`, supervisorCookie)
     .send(payload)
     .expect(409);
@@ -1750,6 +1750,9 @@ test('practice checks theory and prerequisite competence and corrections can reo
       .send({ ...payload, step_position: 1, idempotency_key: randomUUID() })
       .expect(201)
   ).body;
+  await post(`learning/${module}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [0] })
+    .expect(201);
   await post(`onboarding-assignments/${taskId}/assessments`, supervisorCookie)
     .send(payload)
     .expect(201);
@@ -2107,4 +2110,190 @@ test('practice requests reject future starts, absent rubrics and unmet practical
       based_on: detail.progress.steps[1].latest_assessment_id,
     })
     .expect(409);
+});
+
+let gatedTask = '',
+  gatedRubric = '',
+  gatedVersions: string[] = [],
+  gatedRootAssessment = '',
+  gatedLeafAttempt: any;
+async function createGatedAssignment(steps: any[], start = '2020-01-01') {
+  const path = (
+    await post('onboarding-paths', cookies[0])
+      .send({ title: 'Akses bertahap', description: 'Prasyarat teori dan praktik', steps })
+      .expect(201)
+  ).body.id;
+  await post(`onboarding-paths/${path}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const batch = (
+    await post('onboarding-assignments/preview', cookies[0])
+      .send({ ...assignmentPayload(), path_version_id: path, start_date: start })
+      .expect(201)
+  ).body.id;
+  return (
+    await post(`onboarding-assignments/batches/${batch}/commit`, cookies[0])
+      .send({ confirm: true })
+      .expect(201)
+  ).body.assignment_ids[0];
+}
+test('learning access enforces full prerequisite chains on direct reads and submissions', async () => {
+  gatedRubric = (await post('practice-rubrics', cookies[0]).send(rubricContent)).body.id;
+  await post(`practice-rubrics/${gatedRubric}/publish`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  for (let i = 0; i < 3; i++) {
+    const id = (
+      await post('learning', cookies[0]).send({ ...learningContent, title: 'Tahap akses ' + i })
+    ).body.id;
+    gatedVersions.push(id);
+    await post(`learning/${id}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  }
+  gatedTask = await createGatedAssignment(
+    gatedVersions.map((id, i) => ({
+      version_id: id,
+      rubric_version_id: gatedRubric,
+      due_days: i,
+      prerequisite: i === 0 ? null : i,
+    })),
+  );
+  await get('learning/' + gatedVersions[0], learnerCookie).expect(200);
+  for (const id of gatedVersions.slice(1)) {
+    await get('learning/' + id, learnerCookie).expect(403);
+    await get(`learning/${id}?assignment_id=${gatedTask}`, learnerCookie).expect(403);
+    await post(`learning/${id}/attempts`, learnerCookie)
+      .send({ idempotency_key: randomUUID(), answers: [0] })
+      .expect(403);
+  }
+  await get('learning/' + gatedVersions[2], cookies[0]).expect(200);
+  await get('learning/' + gatedVersions[2], cookies[1]).expect(404);
+  const list = (await get('learning', learnerCookie)).body.items;
+  assert.equal(list.find((r: any) => r.id === gatedVersions[2]).learning_available, false);
+  assert.ok(list.find((r: any) => r.id === gatedVersions[2]).learning_locked_reason);
+  await post(`learning/${gatedVersions[0]}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), assignment_id: gatedTask, answers: [0] })
+    .expect(201);
+  const assessment = {
+    step_position: 1,
+    answers: practiceAnswers(true),
+    comment: 'Observasi praktik tahap pertama sesuai rubrik',
+    idempotency_key: randomUUID(),
+  };
+  gatedRootAssessment = (
+    await post(`onboarding-assignments/${gatedTask}/assessments`, supervisorCookie)
+      .send(assessment)
+      .expect(201)
+  ).body.id;
+  await get(`learning/${gatedVersions[1]}?assignment_id=${gatedTask}`, learnerCookie).expect(200);
+  await post(`learning/${gatedVersions[1]}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), assignment_id: gatedTask, answers: [0] })
+    .expect(201);
+  await post(`onboarding-assignments/${gatedTask}/assessments`, supervisorCookie)
+    .send({ ...assessment, step_position: 2, idempotency_key: randomUUID() })
+    .expect(201);
+  gatedLeafAttempt = { idempotency_key: randomUUID(), assignment_id: gatedTask, answers: [0] };
+  await post(`learning/${gatedVersions[2]}/attempts`, learnerCookie)
+    .send(gatedLeafAttempt)
+    .expect(201);
+  const stored = (
+    await db.query('SELECT assignment_id FROM learning_attempts WHERE idempotency_key=$1', [
+      gatedLeafAttempt.idempotency_key,
+    ])
+  ).rows[0];
+  assert.equal(stored.assignment_id, gatedTask);
+  await post(`onboarding-assignments/${gatedTask}/assessments`, supervisorCookie)
+    .send({
+      ...assessment,
+      answers: practiceAnswers(false),
+      training_instructions: 'Ulangi pemeriksaan keamanan area kerja',
+      supersedes: gatedRootAssessment,
+      correction_reason: 'Temuan baru pada praktik langkah pertama',
+      idempotency_key: randomUUID(),
+    })
+    .expect(201);
+  // The direct parent stays competent, but an earlier ancestor now needs practice.
+  await get(`learning/${gatedVersions[2]}?assignment_id=${gatedTask}`, learnerCookie).expect(403);
+  await post(`learning/${gatedVersions[2]}/attempts`, learnerCookie)
+    .send({ ...gatedLeafAttempt, idempotency_key: randomUUID() })
+    .expect(403);
+  await post(`learning/${gatedVersions[2]}/attempts`, learnerCookie)
+    .send(gatedLeafAttempt)
+    .expect(201);
+  await post(`onboarding-assignments/${gatedTask}/assessments`, supervisorCookie)
+    .send({ ...assessment, step_position: 3, idempotency_key: randomUUID() })
+    .expect(409);
+  await post(`onboarding-assignments/${gatedTask}/practice-requests`, learnerCookie)
+    .send({
+      step_position: 3,
+      kind: 'practice',
+      reason: 'Saya ingin menunjukkan praktik langkah lanjutan',
+      idempotency_key: randomUUID(),
+    })
+    .expect(409);
+  const task = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (t: any) => t.id === gatedTask,
+  );
+  assert.equal(task.progress.steps[2].learning_available, false);
+  assert.equal(task.progress.steps[2].practice_eligible, false);
+  assert.equal(task.progress.steps[1].practice_status, 'competent');
+  assert.equal(task.progress.steps[0].overdue, true);
+  await get(`learning/${gatedVersions[0]}?assignment_id=${gatedTask}`, learnerCookie).expect(200);
+});
+test('shared module library access does not bypass a specifically locked assignment context', async () => {
+  const alternative = await createGatedAssignment([
+    { version_id: gatedVersions[2], rubric_version_id: gatedRubric, due_days: 0 },
+  ]);
+  await get('learning/' + gatedVersions[2], learnerCookie).expect(200);
+  await get(`learning/${gatedVersions[2]}?assignment_id=${alternative}`, learnerCookie).expect(200);
+  await get(`learning/${gatedVersions[2]}?assignment_id=${gatedTask}`, learnerCookie).expect(403);
+  await get(`learning/${gatedVersions[2]}?assignment_id=${randomUUID()}`, learnerCookie).expect(
+    404,
+  );
+  await get(`learning/${gatedVersions[0]}?assignment_id=${alternative}`, learnerCookie).expect(404);
+  await post(`learning/${gatedVersions[2]}/attempts`, learnerCookie)
+    .send({ ...gatedLeafAttempt, assignment_id: alternative })
+    .expect(409);
+  await post(`learning/${gatedVersions[2]}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), assignment_id: alternative, answers: [0] })
+    .expect(201);
+  await post(`learning/${gatedVersions[2]}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), assignment_id: gatedTask, answers: [0] })
+    .expect(403);
+  await post(`learning/${gatedVersions[0]}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), assignment_id: randomUUID(), answers: [0] })
+    .expect(404);
+});
+test('future assignment schedules lock library and contextual access while cancellation preserves free learning', async () => {
+  const module = (
+    await post('learning', cookies[0]).send({
+      ...learningContent,
+      title: 'Materi terjadwal mendatang',
+    })
+  ).body.id;
+  await post(`learning/${module}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  await get('learning/' + module, learnerCookie).expect(200);
+  const task = await createGatedAssignment(
+    [{ version_id: module, rubric_version_id: gatedRubric, due_days: 0 }],
+    '2099-01-01',
+  );
+  await get('learning/' + module, learnerCookie).expect(403);
+  await get(`learning/${module}?assignment_id=${task}`, learnerCookie).expect(403);
+  await post(`learning/${module}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [0] })
+    .expect(403);
+  const row = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (t: any) => t.id === task,
+  );
+  assert.equal(row.progress.steps[0].learning_available, false);
+  assert.equal(row.progress.steps[0].practice_eligible, false);
+  await post(`onboarding-assignments/${task}/cancel`, cookies[0])
+    .send({ reason: 'Jadwal pelatihan dibatalkan untuk staf ini' })
+    .expect(201);
+  await get(`learning/${module}?assignment_id=${task}`, learnerCookie).expect(403);
+  await get('learning/' + module, learnerCookie).expect(200);
+  await post(`learning/${module}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [0] })
+    .expect(201);
+  const cancelled = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (t: any) => t.id === task,
+  );
+  assert.equal(cancelled.progress.theory_passed, 0);
 });

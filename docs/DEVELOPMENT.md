@@ -172,7 +172,7 @@ Sebagai OWNER/ADMIN, buka **Jalur onboarding**. Siapkan dan terbitkan modul di *
 
 Simpan draft lalu tinjau detail sebelum **Terbitkan jalur**. Publikasi akan ditolak jika salah satu modul sudah diarsipkan; buat revisi dan pilih penggantinya. **Revisi ke versi baru** menyalin isi ke editor dan penyimpanan menghasilkan draft baru. **Arsipkan jalur** menyimpan versi lama beserta referensinya. Perubahan editor yang belum disimpan belum dipersistenkan dan hilang jika halaman ditutup.
 
-Penugasan staf dan tenggat aktual tersedia pada menu Tugas onboarding. Observasi praktik dan status penyelesaian tersedia pada tugas; akses kuis berdasarkan prasyarat belum dibatasi. Video setiap modul tetap berupa tautan YouTube saja.
+Penugasan staf dan tenggat aktual tersedia pada menu Tugas onboarding. Observasi praktik dan status penyelesaian tersedia pada tugas; akses materi/kuis mengikuti tanggal mulai dan rantai prasyarat. Video setiap modul tetap berupa tautan YouTube saja.
 
 ### Menugaskan onboarding
 
@@ -188,7 +188,7 @@ Di **Tugas onboarding**, status berubah dari **Ditugaskan** ke **Sedang belajar*
 
 Staf dapat memilih **Buka materi & kuis** dari tugasnya sendiri. Hasil submit memperbarui progres tugas; tombol **Perbarui tugas** memuat perubahan dari sesi/perangkat lain. Jatah tiga percobaan dan reset supervisor tetap berlaku per staf/versi modul, dibagi dengan pustaka belajar, bukan jatah baru pada setiap assignment. Versi yang diarsipkan tidak dapat dibuka; hubungi admin untuk pengganti, sementara bukti lama tetap terlihat.
 
-Prasyarat belum membatasi akses kuis, tetapi kompetensi praktik prasyarat diperiksa saat pengesahan observasi. Angka teori lulus tidak boleh dibaca sebagai penyelesaian onboarding. Tugas cancelled tetap dibatalkan dan histori teorinya tidak mencakup kuis sesudah waktu pembatalan. Bukti teori belum memiliki masa kedaluwarsa otomatis; gunakan versi baru jika konten berubah atau perlu diuji ulang.
+Prasyarat membatasi akses materi/kuis; teori dan praktik seluruh rantainya juga diperiksa saat pengajuan dan pengesahan observasi. Angka teori lulus tidak boleh dibaca sebagai penyelesaian onboarding. Tugas cancelled tetap dibatalkan dan histori teorinya tidak mencakup kuis sesudah waktu pembatalan. Bukti teori belum memiliki masa kedaluwarsa otomatis; gunakan versi baru jika konten berubah atau perlu diuji ulang.
 
 ### Menyiapkan rubrik praktik
 
@@ -208,7 +208,7 @@ Untuk penilaian ulang atau koreksi, gunakan hasil terbaru sebagai dasar dan isi 
 
 **Muat riwayat observasi** tersedia bagi staf pemilik tugas dan pengelola dalam scope; tampil maksimal 100 record terbaru. Seluruh teori dan praktik kompeten menghasilkan **Selesai**. Koreksi menjadi needs_practice dapat membuka tugas kembali dan memunculkan lewat tenggat. Arsip rubrik tidak mengubah kriteria tugas lama, sehingga snapshot tersebut tetap dapat dinilai. Tugas tanpa rubrik belum dapat dinilai dan tugas cancelled menolak penilaian baru.
 
-Pengajuan praktik/review staf tersedia sesuai panduan di bawah. Bukti foto/file, notifikasi dan pembatasan akses kuis sesuai prasyarat belum tersedia. Pengesahan ini merupakan satu langkah simpan hasil yang sudah final; belum ada draft observasi terpisah.
+Pengajuan praktik/review staf tersedia sesuai panduan di bawah. Bukti foto/file dan notifikasi belum tersedia; akses kuis sudah mengikuti prasyarat. Pengesahan ini merupakan satu langkah simpan hasil yang sudah final; belum ada draft observasi terpisah.
 
 ### Mengajukan praktik dan peninjauan hasil
 
@@ -219,3 +219,13 @@ Pengajuan menyimpan referensi hasil terakhir. Jika penilai mengubah hasil saat f
 Sebagai SUPERVISOR atau OWNER/ADMIN, aktifkan **Hanya pengajuan menunggu**. Antrean mengambil maksimal 100 tugas tertua yang memiliki pengajuan pending dalam scope saat ini, termasuk tugas completed yang meminta review. Pengesahan observasi baru pada langkah yang sama otomatis ditautkan ke pengajuan yang menunggu. Replay observasi lama tidak akan menjawab pengajuan baru. Observasi tetap boleh dilakukan tanpa pengajuan staf bila proses operasional memerlukannya.
 
 Review pending tidak membatalkan kompetensi atau membuka kembali tugas completed dengan sendirinya. Hanya observasi koreksi yang dapat mengubah hasil praktik dan progres. Pembatalan tugas menghentikan pengajuan pending tanpa menghapus histori; pengajuan yang sudah dijawab tetap menyimpan ID observasi jawabannya. Belum ada notifikasi otomatis, SLA, komentar bolak-balik atau penugasan review ke penilai lain secara otomatis.
+
+### Akses belajar bertahap
+
+Dari **Tugas onboarding**, tombol materi hanya tersedia sesudah tanggal mulai lokal dan seluruh rantai prasyarat lulus teori serta kompeten praktik. Server memeriksa konteks assignment saat membuka materi dan mengirim kuis; mengubah URL atau menghilangkan assignment_id tidak membuka materi jika tidak ada jalur aktif lain yang mengizinkannya. Lewat tenggat tidak menutup akses. Koreksi praktik ancestor menjadi needs_practice dapat mengunci kembali langkah turunan, tanpa menghapus bukti teori yang sudah ada.
+
+Pustaka tetap menyediakan materi terbit yang belum ditugaskan. Bila versi yang sama muncul pada beberapa tugas aktif, pustaka membuka versi tersebut jika setidaknya satu tugas sudah mengizinkan akses. Membuka dari tugas tertentu tetap memeriksa tugas tersebut, walaupun pustaka bisa diakses melalui tugas lain. Membatalkan seluruh tugas yang membatasi versi mengembalikannya sebagai materi bebas di pustaka; tugas cancelled sendiri tidak dapat digunakan sebagai konteks belajar.
+
+API detail materi menerima query opsional `assignment_id`; body submit kuis menerima field opsional yang sama. Staf hanya dapat memakai konteks tugas sendiri dan versi yang ada pada snapshot tugas itu. Idempotency key tidak dapat dipindahkan antara konteks. Replay hasil yang sudah disimpan tetap tersedia untuk histori walaupun akses baru terkunci, dan tidak membuat percobaan baru. Admin dapat meninjau isi/kunci materi melalui pustaka pengelolaan, sedangkan submit kuis tetap memeriksa akses peserta.
+
+Jatah percobaan/reset dan pemakaian bukti teori tetap per staf/versi modul, dibagi antar tugas. Penugasan baru tidak menghapus atau mengulang nilai yang sudah lulus pada versi yang sama. Pembatasan ini berlaku pada endpoint Karyanesia; video tetap menggunakan tautan YouTube dan mengikuti akses pemilik videonya.

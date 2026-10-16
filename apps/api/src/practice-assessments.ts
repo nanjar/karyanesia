@@ -18,6 +18,7 @@ import { SessionGuard } from './security';
 import { admins, ApiRequest } from './types';
 import { audit } from './audit';
 import { digest } from './crypto';
+import { stepLearningGate } from './learning-access';
 import { assignmentProgress } from './onboarding-progress';
 const schema = z.strictObject({
   step_position: z.number().int().min(1).max(20),
@@ -121,11 +122,22 @@ export class PracticeAssessmentsController {
       const progress = (await assignmentProgress(db, a.tenant_id, [task]))[0];
       if (progress.progress.steps[input.step_position - 1].theory_status !== 'passed')
         throw new ConflictException('Teori langkah ini harus lulus sebelum praktik disahkan.');
-      if (
-        step.prerequisite &&
-        progress.progress.steps[step.prerequisite - 1].practice_status !== 'competent'
-      )
-        throw new ConflictException('Praktik prasyarat belum kompeten.');
+      const gate = stepLearningGate(
+        task,
+        step,
+        true,
+        new Set(
+          progress.progress.steps
+            .filter((s: any) => s.theory_status === 'passed')
+            .map((s: any) => s.version_id),
+        ),
+        new Set(
+          progress.progress.steps
+            .filter((s: any) => s.practice_status === 'competent')
+            .map((s: any) => s.position),
+        ),
+      );
+      if (!gate.allowed) throw new ConflictException(gate.reason!);
       const old = (
         await db.query(
           'SELECT id,sequence FROM practice_assessments WHERE tenant_id=$1 AND assignment_id=$2 AND step_position=$3 ORDER BY sequence DESC LIMIT 1',

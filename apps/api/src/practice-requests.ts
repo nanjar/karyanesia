@@ -18,6 +18,7 @@ import { SessionGuard } from './security';
 import { ApiRequest, admins } from './types';
 import { audit } from './audit';
 import { digest } from './crypto';
+import { stepLearningGate } from './learning-access';
 import { assignmentProgress } from './onboarding-progress';
 import { scopedPracticeAssignment } from './practice-assessments';
 const schema = z.strictObject({
@@ -106,11 +107,22 @@ export class PracticeRequestsController {
         throw new ConflictException(
           'Teori langkah harus lulus sebelum mengajukan praktik atau peninjauan.',
         );
-      if (
-        step.prerequisite &&
-        progress.progress.steps[step.prerequisite - 1].practice_status !== 'competent'
-      )
-        throw new ConflictException('Praktik prasyarat belum kompeten.');
+      const gate = stepLearningGate(
+        task,
+        step,
+        true,
+        new Set(
+          progress.progress.steps
+            .filter((s: any) => s.theory_status === 'passed')
+            .map((s: any) => s.version_id),
+        ),
+        new Set(
+          progress.progress.steps
+            .filter((s: any) => s.practice_status === 'competent')
+            .map((s: any) => s.position),
+        ),
+      );
+      if (!gate.allowed) throw new ConflictException(gate.reason!);
       if (state.latest_assessment_id !== input.based_on)
         throw new ConflictException(
           'Hasil observasi berubah. Muat ulang tugas sebelum mengajukan.',

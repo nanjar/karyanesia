@@ -24,16 +24,25 @@ export function LearningPanel({
   canReset,
   onError,
   initialVersion,
+  assignmentId,
   onAssessed,
 }: {
   admin: boolean;
   canReset: boolean;
   onError: (e: Error) => void;
   initialVersion?: string;
+  assignmentId?: string;
   onAssessed?: () => Promise<void>;
 }) {
   const [items, setItems] = useState<
-      { id: string; title: string; status: string; version: number }[]
+      {
+        id: string;
+        title: string;
+        status: string;
+        version: number;
+        learning_available: boolean;
+        learning_locked_reason: string | null;
+      }[]
     >([]),
     [detail, setDetail] = useState<Detail | null>(null),
     [busy, setBusy] = useState(false),
@@ -50,11 +59,16 @@ export function LearningPanel({
   }, []);
   useEffect(() => {
     if (initialVersion) void open(initialVersion);
-  }, [initialVersion]);
+  }, [initialVersion, assignmentId]);
   async function open(id: string) {
     setBusy(true);
+    setDetail(null);
     try {
-      setDetail(await api<Detail>('learning/' + id));
+      setDetail(
+        await api<Detail>(
+          'learning/' + id + (assignmentId ? `?assignment_id=${assignmentId}` : ''),
+        ),
+      );
       setAnswers([]);
       setKey(crypto.randomUUID());
       setNotice('');
@@ -82,22 +96,24 @@ export function LearningPanel({
             <h2>Pustaka materi</h2>
             {!items.length && <p>Belum ada materi yang dapat ditampilkan.</p>}
             {items.map((i) => (
-              <button
-                className="secondary learning-item"
-                disabled={busy}
-                key={i.id}
-                onClick={() => void open(i.id)}
-              >
-                {i.title} · v{i.version} ·{' '}
-                {
-                  (
-                    { draft: 'Draft', published: 'Terbit', archived: 'Diarsipkan' } as Record<
-                      string,
-                      string
-                    >
-                  )[i.status]
-                }
-              </button>
+              <div key={i.id}>
+                <button
+                  className="secondary learning-item"
+                  disabled={busy || !i.learning_available}
+                  onClick={() => void open(i.id)}
+                >
+                  {i.title} · v{i.version} ·{' '}
+                  {
+                    (
+                      { draft: 'Draft', published: 'Terbit', archived: 'Diarsipkan' } as Record<
+                        string,
+                        string
+                      >
+                    )[i.status]
+                  }
+                </button>
+                {!i.learning_available && <p>{i.learning_locked_reason}</p>}
+              </div>
             ))}
           </section>
         )}
@@ -214,12 +230,19 @@ export function LearningPanel({
                   try {
                     const r = await api<Result>(`learning/${detail.id}/attempts`, 'POST', {
                       idempotency_key: key,
+                      ...(assignmentId ? { assignment_id: assignmentId } : {}),
                       answers,
                     });
                     setNotice(
                       `Nilai ${r.score.toFixed(1)}% — ${r.passed ? 'Lulus teori' : 'Perlu belajar lagi'}. Nilai teori tidak mengubah hasil praktik.`,
                     );
-                    setDetail(await api<Detail>('learning/' + detail.id));
+                    setDetail(
+                      await api<Detail>(
+                        'learning/' +
+                          detail.id +
+                          (assignmentId ? `?assignment_id=${assignmentId}` : ''),
+                      ),
+                    );
                     setKey(crypto.randomUUID());
                     setAnswers([]);
                     await onAssessed?.();

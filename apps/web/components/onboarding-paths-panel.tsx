@@ -246,7 +246,7 @@ function PathEditor({
       <h2>{initial ? 'Revisi jalur ke draft baru' : 'Buat draft jalur'}</h2>
       <p>
         1–20 modul terbit. H+0 berarti hari mulai; tanggal aktual baru dihitung pada penugasan.
-        Prasyarat diperiksa sebagai aturan jalur saat ini, belum membatasi pustaka belajar staf.
+        Tanggal mulai serta seluruh rantai prasyarat diperiksa server saat akses belajar.
       </p>
       <form
         className="learning-editor"

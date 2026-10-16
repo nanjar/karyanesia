@@ -1,3 +1,4 @@
+import { stepLearningGate } from './learning-access';
 import { Executor } from './database';
 /** Read model only: immutable quiz evidence never changes assignment snapshots. */
 export async function assignmentProgress(db: Executor, tenant: string, assignments: any[]) {
@@ -45,8 +46,32 @@ export async function assignmentProgress(db: Executor, tenant: string, assignmen
     )
   ).rows;
   const latestRequest = new Map(requests.map((r) => [r.assignment_id + ':' + r.step_position, r]));
+  const startRows = (
+    await db.query(
+      'SELECT id,now()>=(start_date::timestamp AT TIME ZONE timezone) AS started FROM onboarding_assignments WHERE tenant_id=$1 AND id=ANY($2::uuid[])',
+      [tenant, assignments.map((a) => a.id)],
+    )
+  ).rows;
+  const started = new Map(startRows.map((r) => [r.id, r.started]));
   return assignments.map((a) => {
+    const theoryForTask = new Set<string>(
+      a.snapshot.steps
+        .filter((s: any) => index.get(a.id + ':' + s.version_id)?.passed_at)
+        .map((s: any) => s.version_id),
+    );
+    const practiceForTask = new Set<number>(
+      a.snapshot.steps
+        .filter((s: any) => practice.get(a.id + ':' + s.position)?.outcome === 'competent')
+        .map((s: any) => s.position),
+    );
     const steps = a.snapshot.steps.map((s: any) => {
+      const gate = stepLearningGate(
+        a,
+        s,
+        started.get(a.id) === true,
+        theoryForTask,
+        practiceForTask,
+      );
       const result = index.get(a.id + ':' + s.version_id);
       const observation = practice.get(a.id + ':' + s.position);
       const competent = observation?.outcome === 'competent';
@@ -77,6 +102,10 @@ export async function assignmentProgress(db: Executor, tenant: string, assignmen
             }
           : null,
         module_available: availability.get(s.version_id) === true,
+        practice_eligible: gate.allowed && Boolean(s.practice_rubric) && Boolean(result?.passed_at),
+        learning_available: availability.get(s.version_id) === true && gate.allowed,
+        learning_locked_reason:
+          availability.get(s.version_id) !== true ? 'Versi materi telah diarsipkan.' : gate.reason,
         overdue:
           a.status !== 'cancelled' &&
           !(result?.passed_at && competent) &&

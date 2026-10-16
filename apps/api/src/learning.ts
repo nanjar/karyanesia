@@ -9,6 +9,7 @@ import {
   Param,
   Post,
   Req,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -18,6 +19,7 @@ import { SessionGuard } from './security';
 import { admins, ApiRequest } from './types';
 import { audit } from './audit';
 import { digest } from './crypto';
+import { assertLearningAccess, learningGates } from './learning-access';
 import { youtubeId } from './youtube';
 const text = z.string().trim().min(1).max(500);
 const contentSchema = z
@@ -94,7 +96,20 @@ export class LearningController {
       `SELECT id,module_id,version,status,content->>'title' AS title,created_at,published_at FROM learning_versions WHERE tenant_id=$1 AND ($2 OR status='published') ORDER BY created_at DESC,id LIMIT 100`,
       [req.actor.tenant_id, admins(req.actor)],
     );
-    return { items: r.rows };
+    const gates = admins(req.actor)
+      ? null
+      : await learningGates(
+          this.db,
+          req.actor,
+          r.rows.map((row) => row.id),
+        );
+    return {
+      items: r.rows.map((row) => ({
+        ...row,
+        learning_available: gates?.get(row.id)?.allowed ?? true,
+        learning_locked_reason: gates?.get(row.id)?.reason ?? null,
+      })),
+    };
   }
   @Post() async create(@Req() req: ApiRequest, @Body() body: unknown) {
     manage(req);
@@ -117,7 +132,12 @@ export class LearningController {
     });
     return { id };
   }
-  @Get(':id') async detail(@Req() req: ApiRequest, @Param('id') raw: string) {
+  @Get(':id') async detail(
+    @Req() req: ApiRequest,
+    @Param('id') raw: string,
+    @Query('assignment_id') context?: string,
+  ) {
+    const assignmentId = z.uuid().optional().parse(context);
     const id = z.uuid().parse(raw),
       a = req.actor;
     const row = (
@@ -127,6 +147,7 @@ export class LearningController {
       )
     ).rows[0];
     if (!row) throw new NotFoundException('Materi tidak ditemukan.');
+    if (!admins(a) || assignmentId) await assertLearningAccess(this.db, a, id, assignmentId);
     const attempts = (
       await this.db.query(
         `SELECT id,result,round,created_at FROM learning_attempts WHERE tenant_id=$1 AND membership_id=$2 AND version_id=$3 ORDER BY created_at,id`,
@@ -330,6 +351,7 @@ export class LearningController {
       input = z
         .strictObject({
           idempotency_key: z.uuid(),
+          assignment_id: z.uuid().optional(),
           answers: z.array(z.number().int().min(0).max(4)).min(1).max(5),
         })
         .parse(body),
@@ -341,13 +363,14 @@ export class LearningController {
       ]);
       const previous = (
         await db.query(
-          'SELECT version_id,answers,result FROM learning_attempts WHERE tenant_id=$1 AND membership_id=$2 AND idempotency_key=$3',
+          'SELECT version_id,assignment_id,answers,result FROM learning_attempts WHERE tenant_id=$1 AND membership_id=$2 AND idempotency_key=$3',
           [a.tenant_id, a.id, input.idempotency_key],
         )
       ).rows[0];
       if (previous) {
         if (
           previous.version_id !== id ||
+          (previous.assignment_id ?? null) !== (input.assignment_id ?? null) ||
           JSON.stringify(previous.answers) !== JSON.stringify(input.answers)
         )
           throw new ConflictException('Kunci pengiriman sudah digunakan untuk jawaban lain.');
@@ -360,6 +383,7 @@ export class LearningController {
         )
       ).rows[0];
       if (!row) throw new NotFoundException('Materi terbit tidak ditemukan.');
+      await assertLearningAccess(db, a, id, input.assignment_id);
       const content = contentSchema.parse(row.content);
       if (
         input.answers.length !== content.questions.length ||
@@ -385,7 +409,7 @@ export class LearningController {
         practice_status: 'not_assessed',
       };
       await db.query(
-        'INSERT INTO learning_attempts(id,tenant_id,version_id,membership_id,idempotency_key,answers,result,round) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+        'INSERT INTO learning_attempts(id,tenant_id,version_id,membership_id,idempotency_key,answers,result,round,assignment_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
         [
           result.id,
           a.tenant_id,
@@ -395,10 +419,12 @@ export class LearningController {
           JSON.stringify(input.answers),
           JSON.stringify(result),
           current.round,
+          input.assignment_id ?? null,
         ],
       );
       await audit(db, a, req.correlationId, 'learning.theory_submitted', result.id, {
         version_id: id,
+        assignment_id: input.assignment_id ?? null,
         score,
         passed: result.passed,
       });
