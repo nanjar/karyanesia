@@ -1342,3 +1342,53 @@ test('assignment progress reuses exact-version theory evidence and never marks p
     .rows[0];
   assert.equal(stored.status, 'assigned');
 });
+
+test('cancelled assignment evidence retains database timestamp precision', async () => {
+  const module = (await post('learning', cookies[0]).send(learningContent)).body.id;
+  await post(`learning/${module}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const path = (
+    await post('onboarding-paths', cookies[0]).send({
+      title: 'Presisi histori',
+      description: 'Batas pembatalan',
+      steps: [{ version_id: module, due_days: 0 }],
+    })
+  ).body.id;
+  await post(`onboarding-paths/${path}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const batch = (
+    await post('onboarding-assignments/preview', cookies[0]).send({
+      ...assignmentPayload(),
+      path_version_id: path,
+    })
+  ).body.id;
+  const id = (
+    await post(`onboarding-assignments/batches/${batch}/commit`, cookies[0]).send({ confirm: true })
+  ).body.assignment_ids[0];
+  for (const [time, passed] of [
+    ['2026-10-16T00:00:00.123456Z', true],
+    ['2026-10-16T00:00:00.123900Z', false],
+  ] as const) {
+    await db.query(
+      'INSERT INTO learning_attempts(id,tenant_id,version_id,membership_id,idempotency_key,answers,result,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+      [
+        randomUUID(),
+        tenants[0],
+        module,
+        assignmentLearner,
+        randomUUID(),
+        JSON.stringify([passed ? 0 : 1]),
+        JSON.stringify({ score: passed ? 100 : 0, passed }),
+        time,
+      ],
+    );
+  }
+  await db.query(
+    "UPDATE onboarding_assignments SET status='cancelled',cancel_reason='Pembatalan untuk uji presisi',cancelled_by=$1,cancelled_at='2026-10-16T00:00:00.123789Z' WHERE id=$2",
+    [members[0], id],
+  );
+  const item = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (a: any) => a.id === id,
+  );
+  assert.equal(item.status, 'cancelled');
+  assert.equal(item.progress.theory_passed, 1);
+  assert.equal(item.progress.steps[0].attempts, 1);
+});

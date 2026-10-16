@@ -7,7 +7,6 @@ export async function assignmentProgress(db: Executor, tenant: string, assignmen
       assignment_id: a.id,
       membership_id: a.membership_id,
       version_id: s.version_id,
-      cutoff: a.status === 'cancelled' ? a.cancelled_at : null,
     })),
   );
   const evidence = (
@@ -15,9 +14,10 @@ export async function assignmentProgress(db: Executor, tenant: string, assignmen
       `SELECT wanted.assignment_id,t.version_id,COUNT(*) AS attempts,
     MAX((t.result->>'score')::numeric) AS best_score,
     MIN(t.created_at) FILTER (WHERE (t.result->>'passed')::boolean) AS passed_at
-    FROM jsonb_to_recordset($2::jsonb) AS wanted(assignment_id uuid,membership_id uuid,version_id uuid,cutoff timestamptz)
+    FROM jsonb_to_recordset($2::jsonb) AS wanted(assignment_id uuid,membership_id uuid,version_id uuid)
+    JOIN onboarding_assignments a ON a.tenant_id=$1 AND a.id=wanted.assignment_id AND a.membership_id=wanted.membership_id
     JOIN learning_attempts t ON t.tenant_id=$1 AND t.membership_id=wanted.membership_id AND t.version_id=wanted.version_id
-    AND (wanted.cutoff IS NULL OR t.created_at<=wanted.cutoff)
+    AND (a.cancelled_at IS NULL OR t.created_at<=a.cancelled_at)
     GROUP BY wanted.assignment_id,t.version_id`,
       [tenant, JSON.stringify(wanted)],
     )
