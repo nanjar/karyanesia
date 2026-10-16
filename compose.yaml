@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: karyanesia
+      POSTGRES_USER: karyanesia
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U karyanesia -d karyanesia']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  api:
+    image: karyanesia-api:local
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://karyanesia:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/karyanesia
+      WEB_ORIGIN: ${WEB_ORIGIN:?Set WEB_ORIGIN}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY}
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: '4000'
+    ports:
+      - '127.0.0.1:4000:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+  bootstrap:
+    profiles: [setup]
+    image: karyanesia-api:local
+    environment:
+      DATABASE_URL: postgresql://karyanesia:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/karyanesia
+      WEB_ORIGIN: ${WEB_ORIGIN:?Set WEB_ORIGIN}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY}
+      NODE_ENV: ${NODE_ENV:-development}
+      BOOTSTRAP_TENANT_CODE: ${BOOTSTRAP_TENANT_CODE:-}
+      BOOTSTRAP_TENANT_NAME: ${BOOTSTRAP_TENANT_NAME:-}
+      BOOTSTRAP_EMPLOYEE_NUMBER: ${BOOTSTRAP_EMPLOYEE_NUMBER:-}
+      BOOTSTRAP_FULL_NAME: ${BOOTSTRAP_FULL_NAME:-}
+      BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-}
+    command: [node, apps/api/dist/bootstrap.js]
+    depends_on:
+      postgres:
+        condition: service_healthy
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        API_INTERNAL_URL: http://api:4000
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      - api
+    restart: unless-stopped
+volumes:
+  postgres_data:

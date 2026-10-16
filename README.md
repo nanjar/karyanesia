@@ -4,15 +4,35 @@
 
 Platform B2B SaaS untuk onboarding, pelatihan mikro, SOP harian, dan pengembangan kompetensi tenaga kerja operasional.
 
-## Dokumen baseline v0.0.1
+## Status
 
-- [PRD lengkap](docs/PRD-Karyanesia-v0.0.1.md)
+Implementasi dimulai pada milestone fondasi organisasi: autentikasi multi-tenant, MFA admin, aktivasi staf, scope cabang, direktori staf dan audit. Ini belum rilis lengkap v0.0.1. Modul pelatihan dan SOP mengikuti tahap berikutnya.
+
+- [Panduan instalasi dan development](docs/DEVELOPMENT.md)
+- [Status implementasi dan pekerjaan berikutnya](docs/IMPLEMENTATION-STATUS.md)
+- [PRD lengkap v0.0.1](docs/PRD-Karyanesia-v0.0.1.md)
 - [PowerPoint investor dan CTO](docs/presentations/Karyanesia-Investor-CTO-v0.0.1.pptx)
 
-PRD menjadi acuan scope, aturan bisnis, arsitektur awal, serta acceptance MVP. Target pilot, jadwal, dan model bisnis masih merupakan asumsi perencanaan.
+## Struktur
 
-## Pengembangan
+```text
+apps/api/                     NestJS REST API dan integration tests
+apps/web/                     Next.js web responsif
+packages/database/migrations/ PostgreSQL schema migrations
+docs/                         PRD, presentasi, dan panduan
+```
 
-Seluruh source code dan pengembangan Karyanesia dikelola di repository ini. Stack usulan: Next.js, NestJS, PostgreSQL, Redis/BullMQ, dan object storage kompatibel S3. MVP dimulai pada ritel dengan arsitektur multi-tenant.
+## Mulai
 
-Status saat ini: baseline dokumen. Implementasi aplikasi belum dimulai.
+Node.js 22.14+, npm, PostgreSQL 16. Konfigurasi `.env` dan MFA sesuai panduan sebelum menjalankan:
+
+```bash
+npm ci
+npm run db:migrate
+npm run bootstrap
+npm run dev:api
+# terminal terpisah
+npm run dev:web
+```
+
+Tidak ada password default. Seluruh pengembangan dan source code Karyanesia dikelola di repository ini. Target pilot serta model komersial pada PRD masih merupakan asumsi perencanaan.

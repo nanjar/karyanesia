@@ -1,0 +1,30 @@
+{
+  "name": "karyanesia",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.14"
+  },
+  "scripts": {
+    "dev:api": "npm run dev -w @karyanesia/api",
+    "dev:web": "npm run dev -w @karyanesia/web",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test -w @karyanesia/api",
+    "db:migrate": "npm run db:migrate -w @karyanesia/api",
+    "bootstrap": "npm run bootstrap -w @karyanesia/api",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10"
+  },
+  "overrides": {
+    "@nestjs/swagger": {
+      "js-yaml": "5.5.0"
+    }
+  }
+}

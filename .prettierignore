@@ -1,0 +1,7 @@
+node_modules
+.next
+dist
+package-lock.json
+docs/PRD-Karyanesia-v0.0.1.md
+docs/presentations
+apps/web/next-env.d.ts
