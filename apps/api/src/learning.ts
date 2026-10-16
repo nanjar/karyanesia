@@ -1,3 +1,4 @@
+import { cursor, beforeCursor } from './pagination';
 import {
   Body,
   Controller,
@@ -16,12 +17,14 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Database, Executor } from './database';
 import { SessionGuard } from './security';
-import { admins, ApiRequest } from './types';
+import { admins, authors, ApiRequest } from './types';
 import { audit } from './audit';
 import { digest } from './crypto';
 import { assertLearningAccess, learningGates } from './learning-access';
+import { validateLearningAssets } from './media';
 import { youtubeId } from './youtube';
 const text = z.string().trim().min(1).max(500);
+const imageRef = z.strictObject({ asset_id: z.uuid(), alt: z.string().trim().min(1).max(500) });
 const contentSchema = z
   .strictObject({
     video_url: z
@@ -30,6 +33,15 @@ const contentSchema = z
       .refine((v) => youtubeId(v) !== null, 'Gunakan tautan HTTPS YouTube yang valid.')
       .transform((v) => `https://www.youtube.com/watch?v=${youtubeId(v)}`)
       .optional(),
+    youtube_video_id: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{11}$/)
+      .optional(),
+    description: z.string().trim().max(2000).default(''),
+    target_job_ids: z.array(z.uuid()).max(100).default([]),
+    competency_ids: z.array(z.uuid()).max(50).default([]),
+    images: z.array(imageRef).max(10).default([]),
+    video_duration_seconds: z.number().int().min(1).max(300).optional(),
     title: text,
     objective: text,
     transcript: z.string().trim().min(1).max(20000),
@@ -38,6 +50,8 @@ const contentSchema = z
       .array(
         z.strictObject({
           prompt: text,
+          prompt_image: imageRef.optional(),
+          option_images: z.array(imageRef.nullable()).max(5).optional(),
           options: z.array(text).min(2).max(5),
           correct: z.number().int().min(0).max(4),
         }),
@@ -46,11 +60,20 @@ const contentSchema = z
       .max(5),
   })
   .refine(
-    (v) => v.questions.every((q) => q.correct < q.options.length),
+    (v) =>
+      v.questions.every(
+        (q) =>
+          q.correct < q.options.length &&
+          (!q.option_images || q.option_images.length === q.options.length),
+      ),
     'Indeks jawaban tidak sesuai opsi',
-  );
+  )
+  .transform((v) => ({
+    ...v,
+    ...(v.video_url ? { youtube_video_id: youtubeId(v.video_url)! } : {}),
+  }));
 function manage(req: ApiRequest) {
-  if (!admins(req.actor)) throw new ForbiddenException('Hanya admin dapat mengelola materi.');
+  if (!authors(req.actor)) throw new ForbiddenException('Hanya admin dapat mengelola materi.');
 }
 function visible(row: any, admin: boolean) {
   const { content, ...meta } = row;
@@ -84,19 +107,19 @@ async function budget(db: Executor, tenant: string, member: string, version: str
   };
 }
 function assessor(req: ApiRequest) {
-  if (!admins(req.actor) && req.actor.role !== 'SUPERVISOR')
+  if (!authors(req.actor) && req.actor.role !== 'SUPERVISOR')
     throw new ForbiddenException('Akses supervisor diperlukan.');
 }
 @Controller('learning')
 @UseGuards(SessionGuard)
 export class LearningController {
   constructor(@Inject(Database) private db: Database) {}
-  @Get() async list(@Req() req: ApiRequest) {
+  @Get() async list(@Req() req: ApiRequest, @Query('after') after?: string) {
     const r = await this.db.query(
-      `SELECT id,module_id,version,status,content->>'title' AS title,created_at,published_at FROM learning_versions WHERE tenant_id=$1 AND ($2 OR status='published') ORDER BY created_at DESC,id LIMIT 100`,
-      [req.actor.tenant_id, admins(req.actor)],
+      `SELECT id,module_id,version,status,content->>'title' AS title,created_at,published_at FROM learning_versions WHERE tenant_id=$1 AND ($2 OR status='published') ${beforeCursor('learning_versions', 3)} ORDER BY created_at DESC,id DESC LIMIT 100`,
+      [req.actor.tenant_id, authors(req.actor), cursor(after) || null],
     );
-    const gates = admins(req.actor)
+    const gates = authors(req.actor)
       ? null
       : await learningGates(
           this.db,
@@ -117,6 +140,7 @@ export class LearningController {
       id = randomUUID(),
       moduleId = randomUUID();
     await this.db.transaction(async (db) => {
+      await validateLearningAssets(db, req.actor.tenant_id, content);
       await db.query(
         `INSERT INTO learning_versions(id,tenant_id,module_id,version,content,checksum,author_id) VALUES($1,$2,$3,1,$4,$5,$6)`,
         [
@@ -143,11 +167,11 @@ export class LearningController {
     const row = (
       await this.db.query(
         `SELECT * FROM learning_versions WHERE tenant_id=$1 AND id=$2 AND ($3 OR status='published')`,
-        [a.tenant_id, id, admins(a)],
+        [a.tenant_id, id, authors(a)],
       )
     ).rows[0];
     if (!row) throw new NotFoundException('Materi tidak ditemukan.');
-    if (!admins(a) || assignmentId) await assertLearningAccess(this.db, a, id, assignmentId);
+    if (!authors(a) || assignmentId) await assertLearningAccess(this.db, a, id, assignmentId);
     const attempts = (
       await this.db.query(
         `SELECT id,result,round,created_at FROM learning_attempts WHERE tenant_id=$1 AND membership_id=$2 AND version_id=$3 ORDER BY created_at,id`,
@@ -155,7 +179,7 @@ export class LearningController {
       )
     ).rows;
     return {
-      ...visible(row, admins(a)),
+      ...visible(row, authors(a)),
       attempts,
       budget: await budget(this.db, a.tenant_id, a.id, id),
       resets: (
@@ -279,6 +303,7 @@ export class LearningController {
       content = contentSchema.parse(body),
       newId = randomUUID();
     await this.db.transaction(async (db) => {
+      await validateLearningAssets(db, req.actor.tenant_id, content);
       // Serialize version numbering within this tenant.
       await db.query('SELECT id FROM tenants WHERE id=$1 FOR UPDATE', [req.actor.tenant_id]);
       const old = (
@@ -314,6 +339,14 @@ export class LearningController {
     z.strictObject({ confirm: z.literal(true) }).parse(body);
     const id = z.uuid().parse(raw);
     await this.db.transaction(async (db) => {
+      const draft = (
+        await db.query(
+          "SELECT content FROM learning_versions WHERE tenant_id=$1 AND id=$2 AND status='draft' FOR UPDATE",
+          [req.actor.tenant_id, id],
+        )
+      ).rows[0];
+      if (!draft) throw new ConflictException('Draft tidak tersedia.');
+      await validateLearningAssets(db, req.actor.tenant_id, draft.content);
       const row = (
         await db.query(
           `UPDATE learning_versions SET status='published',published_at=now() WHERE tenant_id=$1 AND id=$2 AND status='draft' RETURNING id`,

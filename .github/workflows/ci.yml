@@ -31,4 +31,9 @@ jobs:
       - run: npm test
         env:
           TEST_DATABASE_URL: postgresql://karyanesia:ci-ephemeral-password@localhost:5432/karyanesia_test
+      - name: PostgreSQL backup and restore smoke test
+        run: node scripts/restore-smoke.mjs
+        env:
+          TEST_DATABASE_URL: postgresql://karyanesia:ci-ephemeral-password@localhost:5432/karyanesia_test
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
       - run: npm run build

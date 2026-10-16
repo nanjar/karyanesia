@@ -26,11 +26,29 @@ services:
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY}
       NODE_ENV: ${NODE_ENV:-development}
       PORT: '4000'
+      CLAMAV_HOST: clamav
     ports:
       - '127.0.0.1:4000:4000'
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
+  worker:
+    image: karyanesia-api:local
+    command: [node, apps/api/dist/worker.js]
+    environment:
+      DATABASE_URL: postgresql://karyanesia:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/karyanesia
+      WEB_ORIGIN: ${WEB_ORIGIN:?Set WEB_ORIGIN}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY}
+      NODE_ENV: ${NODE_ENV:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+  clamav:
+    image: clamav/clamav:stable
+    volumes:
+      - clamav_signatures:/var/lib/clamav
     restart: unless-stopped
   bootstrap:
     profiles: [setup]
@@ -62,3 +80,4 @@ services:
     restart: unless-stopped
 volumes:
   postgres_data:
+  clamav_signatures:

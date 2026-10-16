@@ -32,7 +32,7 @@ async function main() {
         [user, input.BOOTSTRAP_FULL_NAME, hash, encryptSecret(secret, cfg.MFA_ENCRYPTION_KEY)],
       );
       await tx.query(
-        "INSERT INTO memberships(id,tenant_id,user_id,employee_number,role) VALUES($1,$2,$3,$4,'OWNER')",
+        "INSERT INTO memberships(id,tenant_id,user_id,employee_number,role,assessor) VALUES($1,$2,$3,$4,'OWNER',true)",
         [member, tenant, user, input.BOOTSTRAP_EMPLOYEE_NUMBER],
       );
       await tx.query(

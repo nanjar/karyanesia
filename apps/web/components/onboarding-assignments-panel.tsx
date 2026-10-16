@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { PagedMore, allMembers } from './paged-more';
 import { api } from '../app/api';
 import { PracticeObservation, PracticeHistory } from './practice-observation';
 import { PracticeRequest, PracticeRequestHistory, RequestState } from './practice-request';
@@ -330,6 +331,13 @@ export function OnboardingAssignmentsPanel({
             )}
           </details>
         ))}
+        <PagedMore
+          path="onboarding-assignments"
+          lastId={items.at(-1)?.id}
+          enabled={!canAssess && items.length > 0 && items.length % 100 === 0}
+          onPage={(rows) => setItems((old) => [...old, ...rows])}
+          onError={onError}
+        />
       </section>
       {module && (
         <section className="panel">
@@ -372,15 +380,7 @@ function AssignmentForm({
   useEffect(() => {
     void Promise.all([
       api<{ items: typeof paths }>('onboarding-paths'),
-      api<{
-        items: {
-          id: string;
-          full_name: string;
-          employee_number: string;
-          active: boolean;
-          role: string;
-        }[];
-      }>('memberships?limit=100'),
+      allMembers(),
       api<{ id: string; name: string }[]>('branches'),
       api<{ id: string; name: string }[]>('jobs'),
     ])

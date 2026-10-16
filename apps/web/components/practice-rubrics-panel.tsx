@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { PagedMore } from './paged-more';
 import { api } from '../app/api';
 type Content = {
   title: string;
@@ -90,6 +91,13 @@ export function PracticeRubricsPanel({ onError }: { onError: (e: Error) => void 
               }
             </button>
           ))}
+          <PagedMore
+            path="practice-rubrics"
+            lastId={items.at(-1)?.id}
+            enabled={items.length > 0 && items.length % 100 === 0}
+            onPage={(rows) => setItems((old) => [...old, ...rows])}
+            onError={onError}
+          />
         </section>
         {detail && (
           <section className="panel">

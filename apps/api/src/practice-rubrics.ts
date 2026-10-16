@@ -1,8 +1,10 @@
+import { cursor, beforeCursor } from './pagination';
 import {
   Body,
   Controller,
   ForbiddenException,
   Get,
+  Query,
   Inject,
   NotFoundException,
   ConflictException,
@@ -15,7 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Database } from './database';
 import { SessionGuard } from './security';
-import { admins, ApiRequest } from './types';
+import { admins, authors, ApiRequest } from './types';
 import { audit } from './audit';
 import { digest } from './crypto';
 const schema = z
@@ -36,20 +38,20 @@ const schema = z
   .refine((v) => v.items.some((i) => i.required), 'Minimal satu item wajib diperlukan.')
   .refine((v) => v.items.every((i) => !i.critical || i.required), 'Item kritis harus wajib.');
 function manage(req: ApiRequest) {
-  if (!admins(req.actor))
+  if (!authors(req.actor))
     throw new ForbiddenException('Hanya admin dapat mengelola rubrik praktik.');
 }
 @Controller('practice-rubrics')
 @UseGuards(SessionGuard)
 export class PracticeRubricsController {
   constructor(@Inject(Database) private db: Database) {}
-  @Get() async list(@Req() req: ApiRequest) {
+  @Get() async list(@Req() req: ApiRequest, @Query('after') after?: string) {
     manage(req);
     return {
       items: (
         await this.db.query(
-          "SELECT id,version,status,content->>'title' AS title,created_at FROM practice_rubrics WHERE tenant_id=$1 ORDER BY created_at DESC,id LIMIT 100",
-          [req.actor.tenant_id],
+          `SELECT id,version,status,content->>'title' AS title,created_at FROM practice_rubrics WHERE tenant_id=$1 ${beforeCursor('practice_rubrics', 2)} ORDER BY created_at DESC,id DESC LIMIT 100`,
+          [req.actor.tenant_id, cursor(after) || null],
         )
       ).rows,
     };

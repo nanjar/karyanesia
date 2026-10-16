@@ -1,8 +1,10 @@
+import { cursor, beforeCursor } from './pagination';
 import {
   Body,
   Controller,
   ForbiddenException,
   Get,
+  Query,
   Inject,
   NotFoundException,
   ConflictException,
@@ -15,7 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Database, Executor } from './database';
 import { SessionGuard } from './security';
-import { admins, ApiRequest } from './types';
+import { admins, authors, managers, ApiRequest } from './types';
 import { audit } from './audit';
 import { digest } from './crypto';
 const schema = z
@@ -57,7 +59,7 @@ const schema = z
     });
   });
 function manage(req: ApiRequest) {
-  if (!admins(req.actor))
+  if (!authors(req.actor))
     throw new ForbiddenException('Hanya admin perusahaan dapat mengelola jalur onboarding.');
 }
 async function snapshot(db: Executor, tenant: string, input: z.infer<typeof schema>) {
@@ -110,24 +112,24 @@ async function snapshot(db: Executor, tenant: string, input: z.infer<typeof sche
 @UseGuards(SessionGuard)
 export class OnboardingPathsController {
   constructor(@Inject(Database) private db: Database) {}
-  @Get() async list(@Req() req: ApiRequest) {
-    manage(req);
+  @Get() async list(@Req() req: ApiRequest, @Query('after') after?: string) {
+    if (!managers(req.actor)) throw new ForbiddenException();
     return {
       items: (
         await this.db.query(
-          "SELECT id,version,status,content->>'title' AS title,created_at FROM onboarding_paths WHERE tenant_id=$1 ORDER BY created_at DESC,id LIMIT 100",
-          [req.actor.tenant_id],
+          `SELECT id,version,status,content->>'title' AS title,created_at FROM onboarding_paths WHERE tenant_id=$1 AND ($2 OR status='published') ${beforeCursor('onboarding_paths', 3)} ORDER BY created_at DESC,id DESC LIMIT 100`,
+          [req.actor.tenant_id, authors(req.actor), cursor(after) || null],
         )
       ).rows,
     };
   }
   @Get(':id') async detail(@Req() req: ApiRequest, @Param('id') raw: string) {
-    manage(req);
+    if (!managers(req.actor)) throw new ForbiddenException();
     const row = (
-      await this.db.query('SELECT * FROM onboarding_paths WHERE tenant_id=$1 AND id=$2', [
-        req.actor.tenant_id,
-        z.uuid().parse(raw),
-      ])
+      await this.db.query(
+        "SELECT * FROM onboarding_paths WHERE tenant_id=$1 AND id=$2 AND ($3 OR status='published')",
+        [req.actor.tenant_id, z.uuid().parse(raw), authors(req.actor)],
+      )
     ).rows[0];
     if (!row) throw new NotFoundException('Jalur tidak ditemukan.');
     return row;

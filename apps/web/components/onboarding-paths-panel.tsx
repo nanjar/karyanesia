@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { PagedMore } from './paged-more';
 import { api } from '../app/api';
 type Step = {
   version_id: string;
@@ -106,6 +107,13 @@ export function OnboardingPathsPanel({ onError }: { onError: (e: Error) => void 
               }
             </button>
           ))}
+          <PagedMore
+            path="onboarding-paths"
+            lastId={items.at(-1)?.id}
+            enabled={items.length > 0 && items.length % 100 === 0}
+            onPage={(rows) => setItems((old) => [...old, ...rows])}
+            onError={onError}
+          />
         </section>
         {detail && (
           <section className="panel">

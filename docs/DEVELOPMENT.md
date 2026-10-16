@@ -252,3 +252,24 @@ Gunakan sesi OWNER/ADMIN dan header Origin aplikasi untuk endpoint mutasi:
 - `GET /api/v1/sop-instances`: 100 tugas terbaru menurut tenggat; OWNER/ADMIN tenant, supervisor cabang grant, staf miliknya. Snapshot memuat versi/checksum template dan zona waktu; starts_at/due_at UTC, local_date tanggal mulai shift cabang. Penanda unassigned terlihat pada admin/supervisor, bukan staf.
 
 Jadwal merupakan snapshot immutable. Arsip template tidak menghentikan jadwal yang sudah dibuat. Belum ada endpoint penghentian jadwal atau penugasan ulang; buat jadwal dengan rentang tanggal yang terkendali. Kelayakan penerima diperiksa ulang saat run, hasilnya dibekukan sesudah run pertama. Belum tersedia UI, notifikasi, pengisian maupun review SOP.
+
+## Milestone operasional terbaru (menggantikan batas historis bagian sebelumnya)
+
+Jadwal, eksekusi/review SOP, foto privat, kendala, kompetensi, laporan, notifikasi, lifecycle akses dan resume YouTube kini tersedia. Jalankan seluruh migrasi hingga 019 sebelum API/worker baru. `docker compose up -d` mencakup worker dan ClamAV; pastikan signature AV siap sebelum unggah. Tidak ada bypass pemindai di luar NODE_ENV=test.
+
+Endpoint baru:
+
+- `POST /sop-instances/:id/events` untuk aksi draft/submit/accept/changes_requested/excused/cancelled dengan `{key,revision,action,answers?,reason?}`; detail/histori pada `GET /sop-instances/:id`.
+- `GET/POST /issues`, `GET /issues/:id`, `POST /issues/:id/transitions`; transisi memerlukan key/revision/note, assignment memerlukan owner_id/due_at. Sertakan idempotency_key saat membuat kendala.
+- `GET/POST /competencies`, `GET /competencies/matrix`, `GET /competencies/requirements`, `POST /competencies/requirements/:job`.
+- `GET/POST /data-corrections`, `POST /data-corrections/:id/resolve`.
+- `GET /reports/summary?from=<ISO>&to=<ISO>` dengan branch_id/job_id/path_version_id/status opsional; `POST /reports/export` filter sama. Periode maksimal 366 hari, akhir eksklusif.
+- `GET /notifications`, `POST /notifications/:id/read` dengan confirm=true.
+- `POST /media` menerima purpose, mime, base64, instance_id untuk bukti. Gambar asli/hasil maksimal 5 MB, maksimal 20 megapiksel. `POST /media/:id/url` dengan confirm=true menghasilkan URL 120 detik yang tetap membutuhkan cookie sesi dan izin objek.
+- `GET/POST /learning/:id/video-progress`; POST seconds/revision/assignment_id opsional. Tidak memengaruhi nilai teori/praktik.
+- `POST /memberships/:id/access`, `/transfer-preview`, `/transfer`, `/reset` khusus admin. Perubahan role ADMIN hanya owner; MFA enrollment baru dikembalikan satu kali bila diperlukan, jangan masuk log.
+- `GET /operations-health`, `/operations-health/failed-jobs`, `POST /operations-health/:id/retry`.
+
+Pagination pustaka versi, jadwal, tugas SOP, onboarding dan notifikasi memakai `after=<id terakhir>` (100 baris); identitas/timestamp cursor divalidasi pada tenant. Matriks memakai after member ID. Daftar anggota memakai kontrak next_cursor sebelumnya. Antrean praktik mempunyai batas 100 tugas pending terlama, bukan semua tugas terbaru.
+
+Worker memakai PostgreSQL durable queue sebagai pengganti usulan Redis/BullMQ; gambar memakai bytea privat sebagai pengganti S3 pada implementasi pilot. Keputusan dan batas kapasitas dicatat pada IMPLEMENTATION-STATUS. Lihat OPERATIONS-RUNBOOK untuk backup/restore, alarm dan go-live.

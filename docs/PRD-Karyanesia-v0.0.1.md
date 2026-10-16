@@ -383,3 +383,7 @@ Validasi tersebut tidak mengubah cakupan draft ini menjadi janji implementasi ta
 
 ### Perubahan keputusan — 16 Oktober 2026
 Atas arahan pemilik produk, sumber video dibatasi ke tautan YouTube. Ketentuan ini menggantikan rencana unggah MP4 dan penyimpanan video privat pada rancangan awal. Penyimpanan privat tetap berlaku untuk gambar/bukti non-video.
+
+### Keputusan teknis implementasi — 16 Oktober 2026
+
+Untuk pilot self-hosted, antrean persisten menggunakan PostgreSQL dengan lease, retry/backoff dan failed queue sebagai pengganti usulan Redis/BullMQ. Gambar privat dinormalisasi dan disimpan sebagai bytea PostgreSQL, dengan ClamAV fail-closed serta URL singkat terikat sesi, sebagai pengganti bucket S3 pada tahap ini. Backup database mencakup byte gambar; migrasi object storage dievaluasi berdasarkan pengukuran kapasitas. Ini perubahan implementasi infrastruktur, bukan pengurangan persyaratan isolasi, bukti, immutability atau larangan penyimpanan video. Video tetap tautan YouTube saja.

@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { PagedMore } from './paged-more';
 import { api } from '../app/api';
-type Kind = 'boolean' | 'number' | 'text';
+type Kind = 'boolean' | 'number' | 'text' | 'photo';
 type Item = {
   position?: number;
   label: string;
@@ -45,7 +46,9 @@ function newItem(kind: Kind): Item {
       ? { expected: true }
       : kind === 'number'
         ? { unit: '', min: null, max: null }
-        : { max_length: 2000 }),
+        : kind === 'text'
+          ? { max_length: 2000 }
+          : {}),
   };
 }
 function cleanContent(c: Content): Content {
@@ -121,9 +124,9 @@ export function SopTemplatesPanel({ onError }: { onError: (e: Error) => void }) 
   return (
     <section className="learning-panel sop-panel">
       <div className="alert">
-        Kelola template SOP di sini. Penjadwalan, tugas harian, pengisian/review dan pelaporan
-        kendala belum tersedia. Publikasi template belum membuat tugas atau menjalankan penerimaan
-        otomatis. Item foto menunggu penyimpanan bukti.
+        Kelola template SOP di sini. Buat jadwal dan jalankan tugas melalui menu SOP & kendala.
+        Publikasi template saja belum membuat jadwal. Foto disimpan privat dan diperiksa sebelum
+        tersedia.
       </div>
       {notice && (
         <p className="alert success" role="status">
@@ -155,6 +158,13 @@ export function SopTemplatesPanel({ onError }: { onError: (e: Error) => void }) 
               }
             </button>
           ))}
+          <PagedMore
+            path="sop-templates"
+            lastId={items.at(-1)?.id}
+            enabled={items.length > 0 && items.length % 100 === 0}
+            onPage={(rows) => setItems((old) => [...old, ...rows])}
+            onError={onError}
+          />
         </section>
         {detail && (
           <section className="panel">
@@ -203,7 +213,7 @@ export function SopTemplatesPanel({ onError }: { onError: (e: Error) => void }) 
                   )}
                   {i.kind === 'text' && <p>Maksimal {i.max_length} karakter.</p>}
                   {i.issue_required && (
-                    <p>Ketidaksesuaian ditandai wajib kendala; pelaksanaannya belum tersedia.</p>
+                    <p>Pengajuan ditolak sampai kendala untuk item yang tidak sesuai dilaporkan.</p>
                   )}
                 </li>
               ))}
@@ -465,6 +475,7 @@ function SopEditor({
                 >
                   <option value="boolean">Ya/tidak</option>
                   <option value="number">Angka</option>
+                  <option value="photo">Foto</option>
                   <option value="text">Teks</option>
                 </select>
               </label>
@@ -559,14 +570,14 @@ function SopEditor({
                 />
                 Kritis — memerlukan review manusia
               </label>
-              {item.kind !== 'text' && (
+              {!['text', 'photo'].includes(item.kind) && (
                 <label className="learning-option">
                   <input
                     type="checkbox"
                     checked={item.issue_required}
                     onChange={(e) => update(n, { issue_required: e.target.checked })}
                   />
-                  Tandai kewajiban kendala jika tidak sesuai (belum dijalankan)
+                  Wajib laporkan kendala bila jawaban tidak sesuai
                 </label>
               )}
               <button

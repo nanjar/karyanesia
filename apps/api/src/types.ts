@@ -10,9 +10,16 @@ export interface Actor {
   tenant_name: string;
   branch_id: string | null;
   scopes: string[];
+  assessor?: boolean;
 }
 export interface ApiRequest extends Request {
   actor: Actor;
   correlationId: string;
+  executionSource?: 'worker';
 }
 export const admins = (a: Actor) => a.role === 'OWNER' || a.role === 'ADMIN';
+
+export const authors = (a: Actor) => admins(a) || a.role === 'HR';
+export const assessors = (a: Actor) => a.role === 'SUPERVISOR' || a.assessor === true;
+export const managers = (a: Actor) =>
+  admins(a) || ['HR', 'OPERATIONS', 'SUPERVISOR'].includes(a.role);

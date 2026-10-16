@@ -1,4 +1,12 @@
 import 'reflect-metadata';
+import { VideoProgressController } from './video-progress';
+import { OperationsHealthController } from './operations-health';
+import { LifecycleController } from './lifecycle';
+import { MediaController } from './media';
+import { CompetenciesController, CorrectionsController } from './competencies';
+import { ReportsController } from './reports';
+import { NotificationsController } from './notifications';
+import { SopExecutionController, IssuesController } from './operations';
 import { Controller, Get, Inject, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Database } from './database';
@@ -30,6 +38,16 @@ class HealthController {
     StaffImportsController,
     LearningController,
     SopTemplatesController,
+    SopExecutionController,
+    IssuesController,
+    NotificationsController,
+    CompetenciesController,
+    CorrectionsController,
+    ReportsController,
+    MediaController,
+    VideoProgressController,
+    LifecycleController,
+    OperationsHealthController,
     SopSchedulesController,
     SopInstancesController,
     PracticeRubricsController,

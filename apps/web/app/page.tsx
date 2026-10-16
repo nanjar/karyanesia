@@ -1,6 +1,10 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { TodayPanel } from '../components/today-panel';
+import { AccessPanel } from '../components/access-panel';
+import { InsightsPanel } from '../components/insights-panel';
+import { OperationsPanel } from '../components/operations-panel';
 import { SopTemplatesPanel } from '../components/sop-templates-panel';
 import { PracticeRubricsPanel } from '../components/practice-rubrics-panel';
 import { OnboardingAssignmentsPanel } from '../components/onboarding-assignments-panel';
@@ -29,6 +33,7 @@ type Actor = {
   full_name: string;
   role: string;
   employee_number: string;
+  assessor?: boolean;
   tenant_name: string;
 };
 type Branch = { id: string; code: string; name: string; timezone: string };
@@ -234,6 +239,8 @@ function Auth({ onLogin, initialError }: { onLogin: (a: Actor) => void; initialE
 }
 function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
   const admin = ['OWNER', 'ADMIN'].includes(actor.role);
+  const author = admin || actor.role === 'HR';
+  const manager = admin || ['HR', 'OPERATIONS', 'SUPERVISOR'].includes(actor.role);
   const [tab, setTab] = useState('overview'),
     [modal, setModal] = useState(''),
     [branches, setBranches] = useState<Branch[]>([]),
@@ -374,18 +381,28 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
     paths: 'Jalur onboarding',
     rubrics: 'Rubrik praktik',
     sop: 'Template SOP',
+    operations: 'SOP & kendala',
+    skills: 'Keterampilan & kesiapan',
+    reports: 'Laporan',
+    notifications: 'Notifikasi',
     assignments: 'Tugas onboarding',
   };
   const nav = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
     { id: 'learning', label: 'Materi & kuis', icon: GraduationCap },
     { id: 'assignments', label: 'Tugas onboarding', icon: ClipboardCheck },
-    ...(admin
+    { id: 'operations', label: 'SOP & kendala', icon: ClipboardCheck },
+    { id: 'skills', label: 'Keterampilan', icon: GraduationCap },
+    { id: 'notifications', label: 'Notifikasi', icon: ClipboardCheck },
+    ...(actor.role !== 'STAFF' ? [{ id: 'reports', label: 'Laporan', icon: LayoutDashboard }] : []),
+    ...(author
       ? [
           { id: 'paths', label: 'Jalur onboarding', icon: GraduationCap },
           { id: 'rubrics', label: 'Rubrik praktik', icon: ClipboardCheck },
-          { id: 'sop', label: 'Template SOP', icon: ClipboardCheck },
         ]
+      : []),
+    ...(admin || actor.role === 'OPERATIONS'
+      ? [{ id: 'sop', label: 'Template SOP', icon: ClipboardCheck }]
       : []),
     {
       id: 'staff',
@@ -431,18 +448,6 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
             </button>
           ))}
         </nav>
-        <div className="coming">
-          <span className="nav-heading">TAHAP BERIKUTNYA</span>
-          <span>
-            <GraduationCap size={18} />
-            Bukti foto / file
-          </span>
-          <span>
-            <ClipboardCheck size={18} />
-            Pelaksanaan SOP harian
-          </span>
-          <small>Pengembangan mengikuti PRD v0.0.1</small>
-        </div>
         <div className="sidebar-bottom">
           <div className="avatar">{actor.full_name.slice(0, 1).toUpperCase()}</div>
           <div>
@@ -557,20 +562,27 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
             </div>
           ) : (
             <>
+              {tab === 'staff' && admin && <AccessPanel onError={handleError} />}
               {tab === 'assignments' && (
                 <OnboardingAssignmentsPanel
-                  admin={admin}
+                  admin={manager}
                   actorId={actor.id}
-                  canAssess={admin || actor.role === 'SUPERVISOR'}
+                  canAssess={actor.assessor === true || actor.role === 'SUPERVISOR'}
                   onError={handleError}
                 />
               )}
-              {tab === 'sop' && admin && <SopTemplatesPanel onError={handleError} />}
-              {tab === 'rubrics' && admin && <PracticeRubricsPanel onError={handleError} />}
-              {tab === 'paths' && admin && <OnboardingPathsPanel onError={handleError} />}
+              {['skills', 'reports', 'notifications'].includes(tab) && (
+                <InsightsPanel actor={actor} onError={handleError} mode={tab} onNavigate={setTab} />
+              )}
+              {tab === 'operations' && <OperationsPanel actor={actor} onError={handleError} />}
+              {tab === 'sop' && (admin || actor.role === 'OPERATIONS') && (
+                <SopTemplatesPanel onError={handleError} />
+              )}
+              {tab === 'rubrics' && author && <PracticeRubricsPanel onError={handleError} />}
+              {tab === 'paths' && author && <OnboardingPathsPanel onError={handleError} />}
               {tab === 'learning' && (
                 <LearningPanel
-                  admin={admin}
+                  admin={author}
                   canReset={admin || actor.role === 'SUPERVISOR'}
                   onError={handleError}
                 />
@@ -578,7 +590,8 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
               {tab === 'import' && admin && (
                 <StaffImportPanel onCommitted={load} onError={handleError} />
               )}
-              {tab === 'overview' && (
+              {tab === 'overview' && <TodayPanel onError={handleError} onNavigate={setTab} />}
+              {tab === 'overview' && actor.role !== 'STAFF' && (
                 <>
                   <section className="stats" aria-label="Statistik organisasi">
                     <article className="stat-blue">

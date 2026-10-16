@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Database, Executor } from './database';
 import { SessionGuard } from './security';
-import { admins, ApiRequest } from './types';
+import { admins, assessors, ApiRequest } from './types';
 import { audit } from './audit';
 import { digest } from './crypto';
 import { stepLearningGate } from './learning-access';
@@ -42,7 +42,14 @@ export async function scopedPracticeAssignment(
   const row = (
     await db.query(
       `SELECT t.* FROM onboarding_assignments t JOIN memberships m ON m.tenant_id=t.tenant_id AND m.id=t.membership_id WHERE t.tenant_id=$1 AND t.id=$2 AND ($3 OR t.membership_id=$4 OR ($5 AND m.branch_id=ANY($6::uuid[])))`,
-      [a.tenant_id, id, admins(a), a.id, a.role === 'SUPERVISOR', a.scopes],
+      [
+        a.tenant_id,
+        id,
+        admins(a),
+        a.id,
+        ['SUPERVISOR', 'HR', 'OPERATIONS'].includes(a.role) || a.assessor === true,
+        a.scopes,
+      ],
     )
   ).rows[0];
   if (!row) throw new NotFoundException('Tugas tidak ditemukan dalam scope Anda.');
@@ -85,8 +92,7 @@ export class PracticeAssessmentsController {
     @Body() body: unknown,
   ) {
     const a = req.actor;
-    if (!admins(a) && a.role !== 'SUPERVISOR')
-      throw new ForbiddenException('Akses penilai diperlukan.');
+    if (!assessors(a)) throw new ForbiddenException('Akses penilai diperlukan.');
     const id = z.uuid().parse(raw),
       input = schema.parse(body),
       hash = digest(id + ':' + JSON.stringify(input));

@@ -1,8 +1,10 @@
+import { cursor, beforeCursor } from './pagination';
 import {
   Body,
   Controller,
   ForbiddenException,
   Get,
+  Query,
   Inject,
   NotFoundException,
   ConflictException,
@@ -17,6 +19,7 @@ import { Database } from './database';
 import { SessionGuard } from './security';
 import { admins, ApiRequest } from './types';
 import { audit } from './audit';
+import { sopState } from './operations';
 const date = z.iso.date();
 const schema = z
   .strictObject({
@@ -44,19 +47,20 @@ const schema = z
 @UseGuards(SessionGuard)
 export class SopSchedulesController {
   constructor(@Inject(Database) private db: Database) {}
-  @Get() async list(@Req() req: ApiRequest) {
-    if (!admins(req.actor)) throw new ForbiddenException();
+  @Get() async list(@Req() req: ApiRequest, @Query('after') after?: string) {
+    if (!admins(req.actor) && req.actor.role !== 'OPERATIONS') throw new ForbiddenException();
     return (
       await this.db.query(
-        'SELECT * FROM sop_schedules WHERE tenant_id=$1 ORDER BY created_at DESC,id LIMIT 100',
-        [req.actor.tenant_id],
+        `SELECT * FROM sop_schedules WHERE tenant_id=$1 AND ($2 OR branch_id=ANY($3::uuid[])) ${beforeCursor('sop_schedules', 4)} ORDER BY created_at DESC,id DESC LIMIT 100`,
+        [req.actor.tenant_id, admins(req.actor), req.actor.scopes, cursor(after) || null],
       )
     ).rows;
   }
   @Post() async create(@Body() body: unknown, @Req() req: ApiRequest) {
     const a = req.actor;
-    if (!admins(a)) throw new ForbiddenException();
+    if (!admins(a) && a.role !== 'OPERATIONS') throw new ForbiddenException();
     const input = schema.parse(body);
+    if (!admins(a) && !a.scopes.includes(input.branch_id)) throw new ForbiddenException();
     return this.db.transaction(async (db) => {
       const template = (
         await db.query(
@@ -75,7 +79,7 @@ export class SopSchedulesController {
         throw new ConflictException('Cabang tidak termasuk target template.');
       const recipients = (
         await db.query(
-          "SELECT m.id,m.employee_number,u.full_name FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=$1 AND m.id=ANY($2::uuid[]) AND m.active AND u.active AND m.role='STAFF' AND m.branch_id=$3 AND m.job_id=ANY($4::uuid[]) ORDER BY m.id FOR SHARE OF m,u",
+          "SELECT m.id,m.employee_number,m.job_id,u.full_name FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=$1 AND m.id=ANY($2::uuid[]) AND m.active AND u.active AND m.role='STAFF' AND m.branch_id=$3 AND m.job_id=ANY($4::uuid[]) ORDER BY m.id FOR SHARE OF m,u",
           [a.tenant_id, input.assignee_ids, input.branch_id, template.content.job_ids],
         )
       ).rows;
@@ -106,6 +110,31 @@ export class SopSchedulesController {
       return { id, content };
     });
   }
+  @Post(':id/stop') async stop(
+    @Req() req: ApiRequest,
+    @Param('id') raw: string,
+    @Body() body: unknown,
+  ) {
+    const a = req.actor,
+      id = z.uuid().parse(raw),
+      input = z.strictObject({ reason: z.string().trim().min(10).max(2000) }).parse(body);
+    if (!admins(a) && a.role !== 'OPERATIONS') throw new ForbiddenException();
+    return this.db.transaction(async (db) => {
+      const row = (
+        await db.query(
+          'SELECT id,branch_id FROM sop_schedules WHERE tenant_id=$1 AND id=$2 FOR UPDATE',
+          [a.tenant_id, id],
+        )
+      ).rows[0];
+      if (!row || (!admins(a) && !a.scopes.includes(row.branch_id))) throw new NotFoundException();
+      await db.query(
+        'INSERT INTO schedule_stops(tenant_id,schedule_id,actor_id,reason) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',
+        [a.tenant_id, id, a.id, input.reason],
+      );
+      await audit(db, a, req.correlationId, 'sop_schedule.stopped', id, { reason: input.reason });
+      return { stopped: true };
+    });
+  }
   @Post(':id/generate') async generate(
     @Param('id') raw: string,
     @Body() body: unknown,
@@ -114,7 +143,7 @@ export class SopSchedulesController {
     const id = z.uuid().parse(raw),
       input = z.strictObject({ local_date: date }).parse(body),
       a = req.actor;
-    if (!admins(a)) throw new ForbiddenException();
+    if (!admins(a) && a.role !== 'OPERATIONS') throw new ForbiddenException();
     return this.db.transaction(async (db) => {
       const schedule = (
         await db.query('SELECT * FROM sop_schedules WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [
@@ -122,7 +151,8 @@ export class SopSchedulesController {
           id,
         ])
       ).rows[0];
-      if (!schedule) throw new NotFoundException();
+      if (!schedule || (!admins(a) && !a.scopes.includes(schedule.branch_id)))
+        throw new NotFoundException();
       const previous = (
         await db.query(
           'SELECT result FROM sop_schedule_runs WHERE tenant_id=$1 AND schedule_id=$2 AND local_date=$3::date',
@@ -130,6 +160,15 @@ export class SopSchedulesController {
         )
       ).rows[0];
       if (previous) return previous.result;
+      if (
+        (
+          await db.query('SELECT 1 FROM schedule_stops WHERE tenant_id=$1 AND schedule_id=$2', [
+            a.tenant_id,
+            id,
+          ])
+        ).rows.length
+      )
+        throw new ConflictException('Jadwal dihentikan.');
       const c = schedule.content,
         weekday = new Date(input.local_date + 'T00:00:00Z').getUTCDay() || 7;
       if (
@@ -138,12 +177,13 @@ export class SopSchedulesController {
         !c.weekdays.includes(weekday)
       )
         throw new ConflictException('Tanggal tidak termasuk jadwal.');
-      const eligible = (
+      const eligibleRows = (
         await db.query(
-          "SELECT m.id FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=$1 AND m.id=ANY($2::uuid[]) AND m.active AND u.active AND m.role='STAFF' AND m.branch_id=$3 AND m.job_id=ANY($4::uuid[]) ORDER BY m.id FOR SHARE OF m,u",
+          "SELECT m.id,m.employee_number,m.job_id,u.full_name FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=$1 AND m.id=ANY($2::uuid[]) AND m.active AND u.active AND m.role='STAFF' AND m.branch_id=$3 AND m.job_id=ANY($4::uuid[]) ORDER BY m.id FOR SHARE OF m,u",
           [a.tenant_id, c.assignee_ids, schedule.branch_id, c.template.content.job_ids],
         )
-      ).rows.map((r) => r.id);
+      ).rows;
+      const eligible = eligibleRows.map((r) => r.id);
       const t = c.template.content;
       const times = (
         await db.query(
@@ -170,7 +210,7 @@ export class SopSchedulesController {
               branch: c.branch,
               timezone: c.timezone,
               shift_label: t.shift_label,
-              recipient: c.recipients.find((r: any) => r.id === member) || null,
+              recipient: eligibleRows.find((r: any) => r.id === member) || null,
             }),
             times.starts_at,
             times.due_at,
@@ -188,6 +228,7 @@ export class SopSchedulesController {
         [randomUUID(), a.tenant_id, id, input.local_date, JSON.stringify(result)],
       );
       await audit(db, a, req.correlationId, 'sop_schedule.generated', id, {
+        execution_source: req.executionSource || 'user',
         local_date: input.local_date,
         ...result,
       });
@@ -199,14 +240,16 @@ export class SopSchedulesController {
 @UseGuards(SessionGuard)
 export class SopInstancesController {
   constructor(@Inject(Database) private db: Database) {}
-  @Get() async list(@Req() req: ApiRequest) {
+  @Get() async list(@Req() req: ApiRequest, @Query('after') after?: string) {
     const a = req.actor;
-    if (!admins(a) && a.role !== 'STAFF' && a.role !== 'SUPERVISOR') throw new ForbiddenException();
-    return (
+    if (!admins(a) && !['STAFF', 'SUPERVISOR', 'OPERATIONS', 'HR'].includes(a.role))
+      throw new ForbiddenException();
+    const rows = (
       await this.db.query(
-        `SELECT *, now()>due_at AS overdue FROM sop_instances WHERE tenant_id=$1 AND ($2::boolean OR ($3='STAFF' AND assignee_id=$4) OR ($3='SUPERVISOR' AND branch_id=ANY($5::uuid[]))) ORDER BY due_at DESC,id LIMIT 100`,
-        [a.tenant_id, admins(a), a.role, a.id, a.scopes],
+        `SELECT *, now()>due_at AS overdue FROM sop_instances WHERE tenant_id=$1 AND ($2::boolean OR ($3='STAFF' AND assignee_id=$4) OR ($3 IN ('SUPERVISOR','OPERATIONS','HR') AND branch_id=ANY($5::uuid[]))) ${beforeCursor('sop_instances', 6, 'due_at')} ORDER BY due_at DESC,id DESC LIMIT 100`,
+        [a.tenant_id, admins(a), a.role, a.id, a.scopes, cursor(after) || null],
       )
     ).rows;
+    return Promise.all(rows.map((row) => sopState(this.db, a.tenant_id, row)));
   }
 }

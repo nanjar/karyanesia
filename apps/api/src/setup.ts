@@ -10,6 +10,7 @@ export function setup(app: INestApplication, openApi = true) {
   app.use(helmet());
   app.use(cookieParser());
   app.use(requestContext);
+  app.use('/api/v1/media', json({ limit: '8mb' }));
   app.use(json({ limit: '2mb' }));
   app.useGlobalFilters(new ErrorFilter());
   if (openApi) {

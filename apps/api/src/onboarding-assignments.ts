@@ -1,8 +1,10 @@
+import { cursor } from './pagination';
 import {
   Body,
   Controller,
   ForbiddenException,
   Get,
+  Query,
   Inject,
   NotFoundException,
   ConflictException,
@@ -16,7 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Database, Executor } from './database';
 import { SessionGuard } from './security';
-import { admins, ApiRequest } from './types';
+import { admins, managers, ApiRequest } from './types';
 import { audit } from './audit';
 import { assignmentProgress } from './onboarding-progress';
 const date = z
@@ -44,7 +46,8 @@ const previewSchema = z.strictObject({
   }),
 });
 function manage(req: ApiRequest) {
-  if (!admins(req.actor)) throw new ForbiddenException('Hanya admin dapat menugaskan onboarding.');
+  if (!managers(req.actor))
+    throw new ForbiddenException('Hanya admin dapat menugaskan onboarding.');
 }
 async function targets(db: Executor, tenant: string, kind: string, ids: string[]) {
   const table = kind === 'staff' ? 'memberships' : kind === 'branch' ? 'branches' : 'jobs';
@@ -119,6 +122,8 @@ export class OnboardingAssignmentsController {
       const path = await available(db, req.actor.tenant_id, input.path_version_id),
         rows = await targets(db, req.actor.tenant_id, input.target.kind, input.target.ids),
         id = randomUUID();
+      if (!admins(req.actor) && rows.some((r) => !req.actor.scopes.includes(r.branch_id)))
+        throw new ForbiddenException('Target di luar scope cabang.');
       await db.query(
         'INSERT INTO onboarding_assignment_batches(id,tenant_id,path_version_id,created_by,start_date,targets,path_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7)',
         [
@@ -161,6 +166,8 @@ export class OnboardingAssignmentsController {
         )
       ).rows[0];
       if (!batch) throw new NotFoundException('Pratinjau tidak ditemukan.');
+      if (!admins(a) && batch.targets.items.some((r: any) => !a.scopes.includes(r.branch_id)))
+        throw new ForbiddenException('Target di luar scope cabang.');
       if (batch.result) return batch.result;
       if (new Date(batch.expires_at).getTime() <= Date.now())
         throw new GoneException('Pratinjau kedaluwarsa. Buat ulang pratinjau.');
@@ -177,6 +184,8 @@ export class OnboardingAssignmentsController {
         [a.tenant_id, branchIds],
       );
       const current = await targets(db, a.tenant_id, 'staff', ids);
+      if (!admins(a) && current.some((r) => !a.scopes.includes(r.branch_id)))
+        throw new ForbiddenException();
       const signature = (rows: any[]) =>
         JSON.stringify(rows.map((r) => [r.id, r.branch_id, r.job_id, r.timezone]));
       if (signature(current) !== signature(batch.targets.items))
@@ -205,7 +214,7 @@ export class OnboardingAssignmentsController {
           steps.push({ ...step, due_at: deadlines.get(member.timezone)!.get(step.due_days) });
         const snapshot = { ...batch.path_snapshot, steps };
         await db.query(
-          'INSERT INTO onboarding_assignments(id,tenant_id,batch_id,path_version_id,membership_id,branch_id,start_date,timezone,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+          'INSERT INTO onboarding_assignments(id,tenant_id,batch_id,path_version_id,membership_id,branch_id,start_date,timezone,snapshot,job_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
           [
             assignmentId,
             a.tenant_id,
@@ -216,6 +225,7 @@ export class OnboardingAssignmentsController {
             batch.start,
             member.timezone,
             JSON.stringify(snapshot),
+            member.job_id,
           ],
         );
         await audit(db, a, req.correlationId, 'onboarding_assignment.assigned', assignmentId, {
@@ -232,12 +242,19 @@ export class OnboardingAssignmentsController {
       return result;
     });
   }
-  @Get() async list(@Req() req: ApiRequest) {
+  @Get() async list(@Req() req: ApiRequest, @Query('after') after?: string) {
     const a = req.actor;
     const rows = (
       await this.db.query(
-        `SELECT t.*,t.start_date::text AS start_date,u.full_name,m.employee_number FROM onboarding_assignments t JOIN memberships m ON m.tenant_id=t.tenant_id AND m.id=t.membership_id JOIN users u ON u.id=m.user_id WHERE t.tenant_id=$1 AND ($2 OR t.membership_id=$3 OR ($4 AND m.branch_id=ANY($5::uuid[]))) ORDER BY t.created_at DESC,t.id LIMIT 100`,
-        [a.tenant_id, admins(a), a.id, a.role === 'SUPERVISOR', a.scopes],
+        `SELECT t.*,t.start_date::text AS start_date,u.full_name,m.employee_number FROM onboarding_assignments t JOIN memberships m ON m.tenant_id=t.tenant_id AND m.id=t.membership_id JOIN users u ON u.id=m.user_id WHERE t.tenant_id=$1 AND ($2 OR t.membership_id=$3 OR ($4 AND m.branch_id=ANY($5::uuid[]))) AND ($6::uuid IS NULL OR (t.created_at,t.id)<(SELECT c.created_at,c.id FROM onboarding_assignments c WHERE c.tenant_id=$1 AND c.id=$6)) ORDER BY t.created_at DESC,t.id DESC LIMIT 100`,
+        [
+          a.tenant_id,
+          admins(a),
+          a.id,
+          ['SUPERVISOR', 'HR', 'OPERATIONS'].includes(a.role),
+          a.scopes,
+          cursor(after) || null,
+        ],
       )
     ).rows;
     return { items: await assignmentProgress(this.db, a.tenant_id, rows) };
@@ -257,7 +274,8 @@ export class OnboardingAssignmentsController {
           [req.actor.tenant_id, id],
         )
       ).rows[0];
-      if (!row) throw new NotFoundException('Tugas tidak ditemukan.');
+      if (!row || (!admins(req.actor) && !req.actor.scopes.includes(row.branch_id)))
+        throw new NotFoundException('Tugas tidak ditemukan.');
       if (row.status === 'cancelled') {
         if (row.cancel_reason !== input.reason)
           throw new ConflictException('Tugas sudah dibatalkan dengan alasan lain.');

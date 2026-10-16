@@ -18,6 +18,20 @@ export function requestContext(req: Request, res: Response, next: NextFunction) 
   (req as ApiRequest).correlationId = id;
   res.setHeader('X-Correlation-ID', id);
   res.setHeader('Cache-Control', 'no-store');
+  const started = performance.now();
+  res.on('finish', () => {
+    if (process.env.NODE_ENV !== 'test')
+      console.log(
+        JSON.stringify({
+          event: 'http.request',
+          correlation_id: id,
+          method: req.method,
+          path: req.path,
+          status: res.statusCode,
+          duration_ms: Math.round(performance.now() - started),
+        }),
+      );
+  });
   next();
 }
 @Injectable()
@@ -42,7 +56,7 @@ export class SessionGuard implements CanActivate {
     if (typeof raw !== 'string' || !/^[\w-]{43}$/.test(raw))
       throw new UnauthorizedException('Silakan masuk.');
     const { rows } = await this.db.query(
-      `SELECT m.id,m.tenant_id,m.user_id,m.role,m.branch_id,m.employee_number,u.full_name,t.name tenant_name,
+      `SELECT m.id,m.tenant_id,m.user_id,m.role,m.assessor,m.branch_id,m.employee_number,u.full_name,t.name tenant_name,
       ARRAY(SELECT g.branch_id::text FROM branch_grants g WHERE g.tenant_id=m.tenant_id AND g.membership_id=m.id) scopes
       FROM sessions s JOIN memberships m ON m.tenant_id=s.tenant_id AND m.id=s.membership_id
       JOIN users u ON u.id=m.user_id JOIN tenants t ON t.id=m.tenant_id

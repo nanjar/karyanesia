@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+process.env.NODE_ENV = 'test';
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
@@ -57,7 +58,7 @@ before(async () => {
     await pool.end();
     pool = new Pool({
       connectionString: process.env.TEST_DATABASE_URL,
-      max: 4,
+      max: 10,
       options: `-c search_path=${schema}`,
     });
     db = {
@@ -123,7 +124,7 @@ before(async () => {
       encryptSecret(secrets[i], key),
     ]);
     await db.query(
-      "INSERT INTO memberships(id,tenant_id,user_id,employee_number,role) VALUES($1,$2,$3,'ADMIN','OWNER')",
+      "INSERT INTO memberships(id,tenant_id,user_id,employee_number,role,assessor) VALUES($1,$2,$3,'ADMIN','OWNER',true)",
       [members[i], tenants[i], uid],
     );
   }
@@ -139,7 +140,7 @@ before(async () => {
     .overrideProvider(Database)
     .useValue(db)
     .compile();
-  app = m.createNestApplication({ logger: false });
+  app = m.createNestApplication({ logger: false, bodyParser: false });
   setup(app, false);
   await app.init();
 });
@@ -710,7 +711,7 @@ test('learning videos accept only YouTube HTTPS URLs and persist canonical links
     'https://user:pass@youtube.com/watch?v=dQw4w9WgXcQ',
   ]) {
     await post('learning', cookies[0])
-      .send({ ...learningContent, video_url })
+      .send({ ...learningContent, video_url, video_duration_seconds: 120 })
       .expect(422);
   }
   for (const video_url of [
@@ -720,7 +721,7 @@ test('learning videos accept only YouTube HTTPS URLs and persist canonical links
     'https://youtube.com/embed/dQw4w9WgXcQ',
   ]) {
     const r = await post('learning', cookies[0])
-      .send({ ...learningContent, video_url })
+      .send({ ...learningContent, video_url, video_duration_seconds: 120 })
       .expect(201);
     const detail = (await get('learning/' + r.body.id, cookies[0])).body;
     assert.equal(detail.content.video_url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
@@ -731,6 +732,7 @@ test('five-question versions grade all answers and revisions retain video and or
   const content = {
     ...learningContent,
     video_url: 'https://youtu.be/dQw4w9WgXcQ',
+    video_duration_seconds: 120,
     questions: Array.from({ length: 5 }, (_, i) => ({
       prompt: `Soal ${i + 1}`,
       options: ['A', 'B', 'C', 'D', 'E'],
@@ -888,7 +890,7 @@ test('onboarding path drafts validate tenant versions, prerequisite order and re
     .send({ confirm: true })
     .expect(201);
   await post('onboarding-paths', learnerCookie).send(pathPayload()).expect(403);
-  await get('onboarding-paths', supervisorCookie).expect(403);
+  await get('onboarding-paths', supervisorCookie).expect(200);
   const foreign = (await post('learning', cookies[1]).send(learningContent)).body.id;
   await post(`learning/${foreign}/publish`, cookies[1]).send({ confirm: true }).expect(201);
   await post('onboarding-paths', cookies[0])
@@ -1002,8 +1004,8 @@ test('assignment previews validate targets and create no staff tasks before conf
     .expect(201);
   await post('onboarding-assignments/preview', learnerCookie).send(assignmentPayload()).expect(403);
   await post('onboarding-assignments/preview', supervisorCookie)
-    .send(assignmentPayload())
-    .expect(403);
+    .send({ ...assignmentPayload(), target: { kind: 'branch', ids: [branches[1]] } })
+    .expect(404);
   await post('onboarding-assignments/preview', cookies[1]).send(assignmentPayload()).expect(409);
   await post('onboarding-assignments/preview', cookies[0])
     .send({ ...assignmentPayload(), start_date: '2026-02-30' })
@@ -2359,7 +2361,7 @@ test('SOP templates validate typed items, critical review policy and tenant targ
     .expect(422);
   for (const items of [
     [],
-    [{ kind: 'photo', label: 'Foto area', required: true }],
+    [{ kind: 'video', label: 'Unggah video', required: true }],
     [{ kind: 'boolean', label: 'Kritis opsional', required: false, critical: true }],
     [{ kind: 'text', label: 'Semua opsional', required: false }],
     [{ kind: 'number', label: 'Tanpa rentang', unit: '°C', min: null, max: null }],
@@ -2386,7 +2388,7 @@ test('SOP templates validate typed items, critical review policy and tenant targ
   await get('sop-templates/' + sopTemplateId, learnerCookie).expect(403);
   await post(`sop-templates/${sopTemplateId}/publish`, cookies[1])
     .send({ confirm: true })
-    .expect(409);
+    .expect(404);
 });
 test('SOP shift defaults support crossing midnight and reject invalid daily windows', async () => {
   for (const window of [
@@ -2602,4 +2604,748 @@ test('SOP generation records unassigned and freezes each run when recipients bec
     ).body.unassigned,
     true,
   );
+});
+
+test('SOP execution preserves drafts, submission time and correction history with server authorization', async () => {
+  const template = (
+    await post('sop-templates', cookies[0])
+      .send({ ...sopPayload(), title: 'Checklist runtime' })
+      .expect(201)
+  ).body.id;
+  await post(`sop-templates/${template}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const schedule = (
+    await post('sop-schedules', cookies[0])
+      .send({
+        template_version_id: template,
+        branch_id: branches[0],
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assignee_ids: [assignmentLearner],
+      })
+      .expect(201)
+  ).body.id;
+  const id = (
+    await post(`sop-schedules/${schedule}/generate`, cookies[0])
+      .send({ local_date: '2026-01-02' })
+      .expect(201)
+  ).body.instance_ids[0];
+  await get(`sop-instances/${id}`, cookies[1]).expect(404);
+  await post(`sop-instances/${id}/events`, cookies[0])
+    .send({ key: randomUUID(), revision: 0, action: 'draft', answers: { '1': true } })
+    .expect(403);
+  await post(`sop-instances/${id}/events`, learnerCookie)
+    .send({ key: randomUUID(), revision: 0, action: 'submit', answers: { '1': true } })
+    .expect(409);
+  const draft = {
+    key: randomUUID(),
+    revision: 0,
+    action: 'draft',
+    answers: { '1': false, '2': 3 },
+  };
+  await post(`sop-instances/${id}/events`, learnerCookie).send(draft).expect(201);
+  await post(`sop-instances/${id}/events`, learnerCookie).send(draft).expect(201);
+  await post(`sop-instances/${id}/events`, learnerCookie)
+    .send({ key: randomUUID(), revision: 1, action: 'submit' })
+    .expect(409);
+  const issue = (
+    await post('issues', learnerCookie)
+      .send({
+        branch_id: branches[0],
+        category: 'Peralatan',
+        description: 'Area belum aman untuk digunakan.',
+        priority: 'high',
+        instance_id: id,
+        item_position: 1,
+      })
+      .expect(201)
+  ).body.id;
+  const submitted = (
+    await post(`sop-instances/${id}/events`, learnerCookie)
+      .send({ key: randomUUID(), revision: 1, action: 'submit' })
+      .expect(201)
+  ).body;
+  assert.equal(submitted.state.status, 'submitted');
+  const first = submitted.state.first_submitted_at;
+  await post(`sop-instances/${id}/events`, learnerCookie)
+    .send({
+      key: randomUUID(),
+      revision: 2,
+      action: 'accept',
+      reason: 'Saya menerima hasil sendiri.',
+    })
+    .expect(403);
+  await post(`sop-instances/${id}/events`, supervisorCookie)
+    .send({
+      key: randomUUID(),
+      revision: 2,
+      action: 'changes_requested',
+      reason: 'Perbaiki kondisi area terlebih dahulu.',
+    })
+    .expect(201);
+  await post(`sop-instances/${id}/events`, learnerCookie)
+    .send({ key: randomUUID(), revision: 3, action: 'submit', answers: { '1': true, '2': 3 } })
+    .expect(201);
+  const accepted = (
+    await post(`sop-instances/${id}/events`, supervisorCookie)
+      .send({
+        key: randomUUID(),
+        revision: 4,
+        action: 'accept',
+        reason: 'Hasil perbaikan sudah diperiksa.',
+      })
+      .expect(201)
+  ).body;
+  assert.equal(accepted.state.first_submitted_at, first);
+  assert.equal(accepted.state.status, 'accepted');
+  assert.equal((await get(`sop-instances/${id}`, learnerCookie)).body.history.length, 5);
+  await post(`sop-instances/${id}/events`, learnerCookie)
+    .send({ key: randomUUID(), revision: 5, action: 'draft', answers: {} })
+    .expect(409);
+  await post(`issues/${issue}/transitions`, learnerCookie)
+    .send({
+      key: randomUUID(),
+      revision: 0,
+      status: 'assigned',
+      note: 'Ditugaskan kepada staf terkait.',
+      owner_id: assignmentLearner,
+      due_at: '2026-10-20T00:00:00Z',
+    })
+    .expect(403);
+  await post(`issues/${issue}/transitions`, supervisorCookie)
+    .send({
+      key: randomUUID(),
+      revision: 0,
+      status: 'assigned',
+      note: 'Ditugaskan kepada staf terkait.',
+      owner_id: assignmentLearner,
+      due_at: '2026-10-20T00:00:00Z',
+    })
+    .expect(201);
+  await post(`issues/${issue}/transitions`, learnerCookie)
+    .send({
+      key: randomUUID(),
+      revision: 1,
+      status: 'in_progress',
+      note: 'Mulai memperbaiki kondisi area.',
+    })
+    .expect(201);
+  await post(`issues/${issue}/transitions`, learnerCookie)
+    .send({
+      key: randomUUID(),
+      revision: 2,
+      status: 'resolved',
+      note: 'Area sudah diperbaiki dan aman.',
+    })
+    .expect(201);
+  await post(`issues/${issue}/transitions`, learnerCookie)
+    .send({
+      key: randomUUID(),
+      revision: 3,
+      status: 'closed',
+      note: 'Kondisi sudah diperiksa langsung.',
+    })
+    .expect(403);
+  await post(`issues/${issue}/transitions`, supervisorCookie)
+    .send({
+      key: randomUUID(),
+      revision: 3,
+      status: 'closed',
+      note: 'Kondisi sudah diperiksa langsung.',
+    })
+    .expect(201);
+  assert.equal((await get('issues', cookies[1])).body.length, 0);
+  await assert.rejects(db.query('DELETE FROM sop_events WHERE instance_id=$1', [id]));
+});
+
+test('worker catches up scheduled dates, deduplicates notifications and honors schedule stops', async () => {
+  const { workerTick } = await import('../src/worker');
+  await workerTick(db);
+  assert.ok(
+    Number((await db.query("SELECT count(*) n FROM worker_jobs WHERE status='done'")).rows[0].n) >
+      0,
+  );
+  assert.equal(
+    Number((await db.query('SELECT count(*) n FROM worker_jobs WHERE attempts>0')).rows[0].n),
+    0,
+  );
+  const { materializeNotifications } = await import('../src/notifications');
+  const before = (await db.query('SELECT count(*) n FROM notifications')).rows[0].n;
+  await materializeNotifications(db);
+  assert.equal((await db.query('SELECT count(*) n FROM notifications')).rows[0].n, before);
+  const list = (await get('notifications', learnerCookie).expect(200)).body;
+  assert.ok(list.length > 0);
+  await post(`notifications/${list[0].id}/read`, cookies[1]).send({ confirm: true }).expect(404);
+  await post(`notifications/${list[0].id}/read`, learnerCookie).send({ confirm: true }).expect(201);
+  const schedule = (await get('sop-schedules', cookies[0])).body[0];
+  await post(`sop-schedules/${schedule.id}/stop`, learnerCookie)
+    .send({ reason: 'Jadwal sudah tidak diperlukan.' })
+    .expect(403);
+  await post(`sop-schedules/${schedule.id}/stop`, cookies[0])
+    .send({ reason: 'Jadwal sudah tidak diperlukan.' })
+    .expect(201);
+  const date = schedule.content.end_date;
+  const previous = (
+    await db.query('SELECT 1 FROM sop_schedule_runs WHERE schedule_id=$1 AND local_date=$2', [
+      schedule.id,
+      date,
+    ])
+  ).rows.length;
+  if (!previous)
+    await post(`sop-schedules/${schedule.id}/generate`, cookies[0])
+      .send({ local_date: date })
+      .expect(409);
+  assert.equal(
+    Number(
+      (await db.query("SELECT count(*) n FROM worker_heartbeats WHERE name='operations'")).rows[0]
+        .n,
+    ),
+    1,
+  );
+});
+
+test('competencies require matching theory and practice and job requirements are versioned', async () => {
+  const v = (
+    await post('learning', cookies[0])
+      .send({
+        title: 'Bukti kompetensi',
+        objective: 'Tujuan',
+        transcript: 'Panduan',
+        questions: [{ prompt: 'Pilih A', options: ['A', 'B'], correct: 0 }],
+      })
+      .expect(201)
+  ).body.id;
+  await post(`learning/${v}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const r = (await post('practice-rubrics', cookies[0]).send(rubricContent).expect(201)).body.id;
+  await post(`practice-rubrics/${r}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const input = {
+    name: 'Pelayanan',
+    description: 'Keterampilan pelayanan pelanggan',
+    module_version_id: v,
+    rubric_version_id: r,
+    validity_days: 30,
+  };
+  await post('competencies', learnerCookie).send(input).expect(403);
+  await post('competencies', cookies[1]).send(input).expect(409);
+  const c = (await post('competencies', cookies[0]).send(input).expect(201)).body.id;
+  const state = () => get('competencies/matrix', learnerCookie);
+  assert.equal(
+    (await state()).body.members
+      .find((m: any) => m.id === assignmentLearner)
+      .skills.find((s: any) => s.id === c).status,
+    'not_started',
+  );
+  await post(`learning/${v}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [0] })
+    .expect(201);
+  assert.equal(
+    (await state()).body.members[0].skills.find((s: any) => s.id === c).status,
+    'theory_passed',
+  );
+  const reqs = {
+    revision: 0,
+    requirements: [{ competency_id: c, required: true, critical: true }],
+  };
+  await post(`competencies/requirements/${jobs[0]}`, cookies[0]).send(reqs).expect(201);
+  await post(`competencies/requirements/${jobs[0]}`, cookies[0]).send(reqs).expect(409);
+  await post(`competencies/requirements/${jobs[1]}`, cookies[0]).send(reqs).expect(404);
+  const correction = (
+    await post('data-corrections', learnerCookie)
+      .send({ reason: 'Bukti praktik saya perlu ditinjau kembali.' })
+      .expect(201)
+  ).body.id;
+  await post(`data-corrections/${correction}/resolve`, cookies[1])
+    .send({ resolution: 'Kami telah memeriksa bukti terkait.' })
+    .expect(404);
+  await post(`data-corrections/${correction}/resolve`, supervisorCookie)
+    .send({ resolution: 'Kami telah memeriksa bukti terkait.' })
+    .expect(201);
+  assert.equal(
+    (await get('competencies/matrix', cookies[1])).body.members.some(
+      (m: any) => m.id === assignmentLearner,
+    ),
+    false,
+  );
+});
+test('reports match detail denominators, filter historical targets and enforce export permissions', async () => {
+  const params = 'from=2026-01-01T00:00:00Z&to=2027-01-01T00:00:00Z';
+  await get('reports/summary?' + params, learnerCookie).expect(403);
+  const r = (await get('reports/summary?' + params, cookies[0]).expect(200)).body;
+  const denominator = r.sop.filter(
+    (s: any) =>
+      s.current.status !== 'cancelled' ||
+      Date.parse(s.current.reviewed_at) >= Date.parse(s.starts_at),
+  );
+  assert.equal(r.summary.sop_due, denominator.length);
+  assert.equal(
+    r.summary.sop_accepted,
+    denominator.filter((s: any) => s.current.status === 'accepted').length,
+  );
+  await get('reports/summary?' + params + '&job_id=' + jobs[0], cookies[0]).expect(200);
+  const empty = (
+    await get(
+      'reports/summary?from=2027-01-01T00:00:00Z&to=2027-01-02T00:00:00Z',
+      cookies[0],
+    ).expect(200)
+  ).body;
+  assert.equal(empty.summary.sop_on_time_percent, null);
+  await get('reports/summary?' + params + '&branch_id=' + branches[1], supervisorCookie).expect(
+    403,
+  );
+  const exported = (
+    await post('reports/export', cookies[0])
+      .send({ from: '2026-01-01T00:00:00Z', to: '2027-01-01T00:00:00Z' })
+      .expect(201)
+  ).body;
+  assert.ok(exported.csv.startsWith('\uFEFF'));
+  await post('reports/export', supervisorCookie)
+    .send({ from: '2026-01-01T00:00:00Z', to: '2027-01-01T00:00:00Z' })
+    .expect(403);
+});
+
+test('private images validate content, bind signed access to sessions and support visual quizzes', async () => {
+  const sharp = (await import('sharp')).default;
+  const bytes = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#224488' } })
+    .png()
+    .toBuffer();
+  const input = { purpose: 'learning', mime: 'image/png', base64: bytes.toString('base64') };
+  await post('media', learnerCookie).send(input).expect(403);
+  await post('media', cookies[0])
+    .send({ ...input, mime: 'image/jpeg' })
+    .expect(422);
+  await post('media', cookies[0])
+    .send({ ...input, base64: Buffer.from('<svg onload="alert(1)"></svg>').toString('base64') })
+    .expect(422);
+  const image = (await post('media', cookies[0]).send(input).expect(201)).body;
+  await post(`media/${image.id}/url`, cookies[1]).send({ confirm: true }).expect(404);
+  await post(`media/${image.id}/url`, learnerCookie).send({ confirm: true }).expect(404);
+  const payload = {
+    title: 'Kuis visual',
+    objective: 'Kenali kondisi kerja',
+    transcript: 'Perhatikan petunjuk visual.',
+    questions: [
+      {
+        prompt: 'Pilih area yang sesuai',
+        prompt_image: { asset_id: image.id, alt: 'Ilustrasi area kerja' },
+        options: ['Area dengan petunjuk lengkap', 'Area tanpa petunjuk'],
+        option_images: [{ asset_id: image.id, alt: 'Area dengan petunjuk lengkap' }, null],
+        correct: 0,
+      },
+    ],
+  };
+  await post('learning', cookies[1]).send(payload).expect(422);
+  const version = (await post('learning', cookies[0]).send(payload).expect(201)).body.id;
+  await post(`learning/${version}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const detail = (await get(`learning/${version}`, learnerCookie).expect(200)).body;
+  assert.equal(detail.content.questions[0].correct, undefined);
+  const signed = (
+    await post(`media/${image.id}/url`, learnerCookie).send({ confirm: true }).expect(201)
+  ).body.url;
+  await request(app.getHttpServer())
+    .get(signed)
+    .set('Cookie', learnerCookie)
+    .expect(200)
+    .expect('Content-Type', /image\/png/);
+  await request(app.getHttpServer()).get(signed).set('Cookie', cookies[0]).expect(403);
+  await request(app.getHttpServer())
+    .get(signed.replace(/expires=\d+/, 'expires=1'))
+    .set('Cookie', learnerCookie)
+    .expect(403);
+});
+test('SOP photo items reject missing or foreign evidence before submission', async () => {
+  const template = (
+    await post('sop-templates', cookies[0])
+      .send({
+        ...sopPayload(),
+        title: 'Checklist foto',
+        items: [
+          { kind: 'photo', label: 'Foto area tanpa data pribadi', required: true, critical: false },
+        ],
+        auto_accept: true,
+      })
+      .expect(201)
+  ).body.id;
+  await post(`sop-templates/${template}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const schedule = (
+    await post('sop-schedules', cookies[0])
+      .send({
+        template_version_id: template,
+        branch_id: branches[0],
+        start_date: '2026-01-01',
+        end_date: '2026-01-02',
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assignee_ids: [assignmentLearner],
+      })
+      .expect(201)
+  ).body.id;
+  const id = (
+    await post(`sop-schedules/${schedule}/generate`, cookies[0])
+      .send({ local_date: '2026-01-01' })
+      .expect(201)
+  ).body.instance_ids[0];
+  const submit = {
+    key: randomUUID(),
+    revision: 0,
+    action: 'submit',
+    answers: { '1': randomUUID() },
+  };
+  await post(`sop-instances/${id}/events`, learnerCookie).send(submit).expect(409);
+  const sharp = (await import('sharp')).default;
+  const bytes = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#448822' } })
+    .png()
+    .toBuffer();
+  const asset = (
+    await post('media', learnerCookie)
+      .send({
+        purpose: 'evidence',
+        instance_id: id,
+        mime: 'image/png',
+        base64: bytes.toString('base64'),
+      })
+      .expect(201)
+  ).body.id;
+  const result = (
+    await post(`sop-instances/${id}/events`, learnerCookie)
+      .send({ ...submit, key: randomUUID(), answers: { '1': asset } })
+      .expect(201)
+  ).body;
+  assert.equal(result.state.status, 'accepted');
+});
+
+test('HR authors content, scoped supervisors assign tasks, and access changes revoke sessions', async () => {
+  const created = (
+    await post('memberships', cookies[0])
+      .send({
+        employee_number: 'HRTEST',
+        full_name: 'HR Test',
+        branch_id: branches[0],
+        job_id: jobs[0],
+      })
+      .expect(201)
+  ).body;
+  await post('auth/activate').send({ token: created.activation_token, password }).expect(200);
+  const old = cookie(
+    await post('auth/login')
+      .send({ company_code: 'company-0', employee_number: 'HRTEST', password })
+      .expect(200),
+  );
+  await post(`memberships/${created.id}/access`, cookies[1])
+    .send({
+      role: 'HR',
+      branch_ids: [branches[0]],
+      assessor: false,
+      reason: 'Penanggung jawab pelatihan cabang.',
+    })
+    .expect(404);
+  await post(`memberships/${created.id}/access`, cookies[0])
+    .send({
+      role: 'HR',
+      branch_ids: [branches[0]],
+      assessor: false,
+      reason: 'Penanggung jawab pelatihan cabang.',
+    })
+    .expect(201);
+  await get('auth/me', old).expect(401);
+  const hr = cookie(
+    await post('auth/login')
+      .send({ company_code: 'company-0', employee_number: 'HRTEST', password })
+      .expect(200),
+  );
+  const v = (
+    await post('learning', hr)
+      .send({
+        title: 'Panduan HR',
+        objective: 'Tujuan',
+        transcript: 'Materi',
+        questions: [{ prompt: 'A', options: ['A', 'B'], correct: 0 }],
+      })
+      .expect(201)
+  ).body.id;
+  await post(`learning/${v}/publish`, hr).send({ confirm: true }).expect(201);
+  await get('onboarding-assignments/practice-queue', hr).expect(403);
+  await post('branches', hr)
+    .send({ code: 'BLOCK', name: 'Dilarang', timezone: 'Asia/Jakarta' })
+    .expect(403);
+  const path = (
+    await post('onboarding-paths', hr)
+      .send({
+        title: 'Jalur HR',
+        description: 'Pengantar staf',
+        steps: [{ version_id: v, due_days: 1, prerequisite: null, practice_required: true }],
+      })
+      .expect(201)
+  ).body.id;
+  await post(`onboarding-paths/${path}/publish`, hr).send({ confirm: true }).expect(201);
+  const p = (
+    await post('onboarding-assignments/preview', supervisorCookie)
+      .send({ ...assignmentPayload(), path_version_id: path })
+      .expect(201)
+  ).body.id;
+  await post(`onboarding-assignments/batches/${p}/commit`, supervisorCookie)
+    .send({ confirm: true })
+    .expect(201);
+  await post(`memberships/${created.id}/reset`, hr)
+    .send({ reason: 'Meminta pengaturan ulang akun.' })
+    .expect(403);
+  const reset = (
+    await post(`memberships/${created.id}/reset`, cookies[0])
+      .send({ reason: 'Identitas pemilik akun sudah diperiksa.' })
+      .expect(201)
+  ).body;
+  await get('auth/me', hr).expect(401);
+  await post('auth/activate')
+    .send({ token: reset.activation_token, password: password + '-reset' })
+    .expect(200);
+  await post('auth/activate')
+    .send({ token: reset.activation_token, password: password + '-reset' })
+    .expect(401);
+});
+
+test('YouTube resume is tenant and assignment scoped, revision controlled and never grants theory credit', async () => {
+  await post('learning', cookies[0])
+    .send({ ...learningContent, video_url: 'https://youtu.be/dQw4w9WgXcQ' })
+    .expect(422);
+  await post('learning', cookies[0])
+    .send({
+      ...learningContent,
+      video_url: 'https://youtu.be/dQw4w9WgXcQ',
+      video_duration_seconds: 301,
+    })
+    .expect(422);
+  const id = (
+    await post('learning', cookies[0])
+      .send({
+        ...learningContent,
+        video_url: 'https://youtu.be/dQw4w9WgXcQ',
+        video_duration_seconds: 120,
+      })
+      .expect(201)
+  ).body.id;
+  await post(`learning/${id}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  assert.equal(
+    (await get(`learning/${id}`, learnerCookie)).body.content.youtube_video_id,
+    'dQw4w9WgXcQ',
+  );
+  await post(`learning/${id}/video-progress`, cookies[1])
+    .send({ seconds: 20, revision: 0 })
+    .expect(404);
+  await post(`learning/${id}/video-progress`, learnerCookie)
+    .send({ seconds: 30, revision: 0 })
+    .expect(201);
+  await post(`learning/${id}/video-progress`, learnerCookie)
+    .send({ seconds: 40, revision: 0 })
+    .expect(409);
+  const r = (await get(`learning/${id}/video-progress`, learnerCookie).expect(200)).body;
+  assert.equal(r.seconds, 30);
+  assert.equal(r.revision, 1);
+  const detail = (await get(`learning/${id}`, learnerCookie)).body;
+  assert.equal(detail.attempts.length, 0);
+  assert.equal(detail.budget.remaining, 3);
+});
+
+test('keyset paging preserves tenant scope and does not skip identical timestamps', async () => {
+  const ids = Array.from({ length: 105 }, () => randomUUID());
+  await db.query(
+    "INSERT INTO notifications(id,tenant_id,membership_id,dedupe_key,title,target,created_at) SELECT id,$1,$2,'page:'||id,'Tugas tersedia','operations','2030-01-01T00:00:00Z'::timestamptz FROM unnest($3::uuid[])id",
+    [tenants[0], assignmentLearner, ids],
+  );
+  const first = (await get('notifications', learnerCookie).expect(200)).body;
+  assert.equal(first.length, 100);
+  const next = (await get('notifications?after=' + first.at(-1).id, learnerCookie).expect(200))
+    .body;
+  const found = [...first, ...next].filter((r) => ids.includes(r.id)).map((r) => r.id);
+  assert.equal(new Set(found).size, 105);
+  assert.equal(found.length, 105);
+  assert.deepEqual((await get('notifications?after=' + ids[0], cookies[1]).expect(200)).body, []);
+  await get('notifications?after=bad', learnerCookie).expect(422);
+});
+test('200 concurrent users across 10 tenants of 1000 staff keep isolation and ordinary API latency bounded', async () => {
+  const hash = await hashPassword('synthetic-load-test-password');
+  const people: any[] = [],
+    tenantRows: any[] = [],
+    branchRows: any[] = [],
+    jobRows: any[] = [],
+    sessionRows: any[] = [];
+  for (let t = 0; t < 10; t++) {
+    const tenant = randomUUID(),
+      branch = randomUUID(),
+      job = randomUUID();
+    tenantRows.push({ id: tenant, code: 'load-' + tenant, name: 'Synthetic load tenant' });
+    branchRows.push({ id: branch, tenant_id: tenant });
+    jobRows.push({ id: job, tenant_id: tenant });
+    for (let n = 0; n < 1000; n++) {
+      const id = randomUUID(),
+        user = randomUUID();
+      people.push({ id, user, tenant_id: tenant, branch_id: branch, job_id: job, number: 'L' + n });
+      if (n < 20) {
+        const raw = token();
+        sessionRows.push({ raw, id, tenant_id: tenant, branch_id: branch, hash: digest(raw) });
+      }
+    }
+  }
+  await db.query(
+    'INSERT INTO tenants(id,code,name) SELECT id,code,name FROM jsonb_to_recordset($1::jsonb) x(id uuid,code text,name text)',
+    [JSON.stringify(tenantRows)],
+  );
+  await db.query(
+    "INSERT INTO branches(id,tenant_id,code,name,timezone) SELECT id,tenant_id,'LOAD','Load branch','Asia/Jakarta' FROM jsonb_to_recordset($1::jsonb) x(id uuid,tenant_id uuid)",
+    [JSON.stringify(branchRows)],
+  );
+  await db.query(
+    "INSERT INTO jobs(id,tenant_id,code,name) SELECT id,tenant_id,'LOAD','Load job' FROM jsonb_to_recordset($1::jsonb) x(id uuid,tenant_id uuid)",
+    [JSON.stringify(jobRows)],
+  );
+  await db.query(
+    "INSERT INTO users(id,full_name,password_hash) SELECT user_id,'Synthetic staff',$2 FROM jsonb_to_recordset($1::jsonb) x(user_id uuid)",
+    [JSON.stringify(people.map((p) => ({ user_id: p.user }))), hash],
+  );
+  await db.query(
+    "INSERT INTO memberships(id,tenant_id,user_id,employee_number,branch_id,job_id,role) SELECT id,tenant_id,user_id,number,branch_id,job_id,'STAFF' FROM jsonb_to_recordset($1::jsonb) x(id uuid,tenant_id uuid,user_id uuid,number text,branch_id uuid,job_id uuid)",
+    [JSON.stringify(people.map((p) => ({ ...p, user_id: p.user })))],
+  );
+  await db.query(
+    "INSERT INTO sessions(token_hash,tenant_id,membership_id,expires_at) SELECT hash,tenant_id,id,now()+interval '1 hour' FROM jsonb_to_recordset($1::jsonb) x(hash text,tenant_id uuid,id uuid)",
+    [JSON.stringify(sessionRows)],
+  );
+  const httpServer = app.getHttpServer();
+  if (!httpServer.listening) await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const elapsed: number[] = [];
+  const results = await Promise.all(
+    sessionRows.map(async (s, index) => {
+      const start = performance.now(),
+        c = 'karyanesia_session=' + s.raw;
+      const result =
+        index % 5 === 0
+          ? await post('issues', c).send({
+              branch_id: s.branch_id,
+              category: 'Synthetic',
+              description: 'Synthetic load fixture issue only.',
+              priority: 'normal',
+              idempotency_key: randomUUID(),
+            })
+          : await get(['auth/me', 'learning', 'organization/summary', 'memberships'][index % 4], c);
+      elapsed.push(performance.now() - start);
+      if (result.status === 200 && result.body.tenant_id)
+        assert.equal(result.body.tenant_id, s.tenant_id);
+      if (result.body.items?.[0]?.employee_number) assert.equal(result.body.items.length, 1);
+      return result.status;
+    }),
+  );
+  assert.ok(results.every((s) => s === 200 || s === 201));
+  elapsed.sort((a, b) => a - b);
+  const p95 = Math.round(elapsed[Math.ceil(elapsed.length * 0.95) - 1]);
+  console.log(
+    JSON.stringify({
+      test: 'load-smoke',
+      tenants: 10,
+      staff_per_tenant: 1000,
+      concurrency: 200,
+      read_percent: 80,
+      write_percent: 20,
+      p95_ms: p95,
+      target_ms: 800,
+      engine: process.env.TEST_DATABASE_URL ? 'PostgreSQL' : 'PGlite',
+      target_met: p95 <= 800,
+    }),
+  );
+  if (process.env.TEST_DATABASE_URL)
+    assert.ok(p95 <= 800, `API p95 ${p95}ms exceeds pilot target 800ms on CI profile`);
+});
+
+test('SOP report golden fixture distinguishes timely, late, excused, cancelled and unassigned', async () => {
+  const template = (
+    await post('sop-templates', cookies[0])
+      .send({ ...sopPayload(), title: 'Report fixture' })
+      .expect(201)
+  ).body.id;
+  await post(`sop-templates/${template}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const schedule = (
+    await post('sop-schedules', cookies[0])
+      .send({
+        template_version_id: template,
+        branch_id: branches[0],
+        start_date: '2025-01-01',
+        end_date: '2025-01-06',
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assignee_ids: [assignmentLearner],
+      })
+      .expect(201)
+  ).body.id;
+  const states = [
+    { status: 'accepted', first_submitted_at: '2025-01-01T08:00:00Z' },
+    { status: 'accepted', first_submitted_at: '2025-01-02T12:00:00Z' },
+    { status: 'excused' },
+    { status: 'cancelled', reviewed_at: '2025-01-04T00:00:00Z' },
+    { status: 'cancelled', reviewed_at: '2025-01-05T05:00:00Z' },
+  ];
+  for (let i = 0; i < states.length; i++) {
+    const id = (
+      await post(`sop-schedules/${schedule}/generate`, cookies[0])
+        .send({ local_date: '2025-01-0' + (i + 1) })
+        .expect(201)
+    ).body.instance_ids[0];
+    await db.query(
+      'INSERT INTO sop_events(id,tenant_id,instance_id,revision,key,request,state,actor_id) VALUES($1,$2,$3,1,$4,$5,$6,$7)',
+      [randomUUID(), tenants[0], id, randomUUID(), '{}', JSON.stringify(states[i]), members[0]],
+    );
+  }
+  const empty = (
+    await post('sop-schedules', cookies[0])
+      .send({
+        template_version_id: template,
+        branch_id: branches[0],
+        start_date: '2025-01-06',
+        end_date: '2025-01-06',
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assignee_ids: [],
+      })
+      .expect(201)
+  ).body.id;
+  await post(`sop-schedules/${empty}/generate`, cookies[0])
+    .send({ local_date: '2025-01-06' })
+    .expect(201);
+  const r = (
+    await get(
+      'reports/summary?from=2025-01-01T00:00:00Z&to=2025-01-07T00:00:00Z',
+      cookies[0],
+    ).expect(200)
+  ).body.summary;
+  assert.equal(r.sop_due, 5);
+  assert.equal(r.sop_on_time, 1);
+  assert.equal(r.sop_on_time_percent, 20);
+  assert.equal(r.sop_accepted, 2);
+  assert.equal(r.sop_accepted_late, 1);
+  assert.equal(r.sop_submitted_late, 1);
+  assert.equal(r.sop_excused, 1);
+  assert.equal(r.sop_cancelled, 2);
+  assert.equal(r.sop_unassigned, 1);
+});
+
+test('image scanner requires availability and rejects malware scanner findings', async () => {
+  const { scanImage } = await import('../src/media');
+  const { createServer } = await import('node:net');
+  await assert.rejects(scanImage(Buffer.from('image'), { NODE_ENV: 'development' } as any));
+  for (const reply of ['stream: OK\0', 'stream: Test-Signature FOUND\0']) {
+    let protocol = '';
+    const server = createServer((socket) => {
+      socket.on('data', (bytes) => {
+        protocol += bytes.toString();
+        if (bytes.subarray(-4).equals(Buffer.alloc(4))) socket.end(reply);
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address() as any;
+    try {
+      const result = scanImage(Buffer.from('synthetic image bytes'), {
+        NODE_ENV: 'development',
+        CLAMAV_HOST: '127.0.0.1',
+        CLAMAV_PORT: address.port,
+      } as any);
+      if (reply.includes('FOUND')) await assert.rejects(result);
+      else await result;
+      assert.ok(protocol.startsWith('zINSTREAM\0'));
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }
 });

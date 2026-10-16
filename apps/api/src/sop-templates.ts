@@ -1,8 +1,10 @@
+import { cursor, beforeCursor } from './pagination';
 import {
   Body,
   Controller,
   ForbiddenException,
   Get,
+  Query,
   Inject,
   NotFoundException,
   ConflictException,
@@ -25,6 +27,7 @@ const base = {
   issue_required: z.boolean().default(false),
 };
 const item = z.discriminatedUnion('kind', [
+  z.strictObject({ ...base, kind: z.literal('photo') }),
   z.strictObject({ ...base, kind: z.literal('boolean'), expected: z.boolean().default(true) }),
   z.strictObject({
     ...base,
@@ -93,7 +96,7 @@ const schema = z
           path: ['items', n, 'min'],
           message: 'Tentukan minimal satu batas angka dengan min tidak lebih dari max.',
         });
-      if (i.kind === 'text' && i.issue_required)
+      if (['text', 'photo'].includes(i.kind) && i.issue_required)
         ctx.addIssue({
           code: 'custom',
           path: ['items', n, 'issue_required'],
@@ -119,19 +122,20 @@ async function refs(db: Executor, tenant: string, input: z.infer<typeof schema>)
   return { branches, jobs };
 }
 function manage(req: ApiRequest) {
-  if (!admins(req.actor)) throw new ForbiddenException('Hanya admin dapat mengelola template SOP.');
+  if (!admins(req.actor) && req.actor.role !== 'OPERATIONS')
+    throw new ForbiddenException('Hanya admin dapat mengelola template SOP.');
 }
 @Controller('sop-templates')
 @UseGuards(SessionGuard)
 export class SopTemplatesController {
   constructor(@Inject(Database) private db: Database) {}
-  @Get() async list(@Req() req: ApiRequest) {
+  @Get() async list(@Req() req: ApiRequest, @Query('after') after?: string) {
     manage(req);
     return {
       items: (
         await this.db.query(
-          "SELECT id,version,status,content->>'title' AS title,created_at FROM sop_templates WHERE tenant_id=$1 ORDER BY created_at DESC,id LIMIT 100",
-          [req.actor.tenant_id],
+          `SELECT id,version,status,content->>'title' AS title,created_at FROM sop_templates WHERE tenant_id=$1 AND ($2 OR NOT EXISTS(SELECT 1 FROM sop_template_branches b WHERE b.tenant_id=$1 AND b.template_version_id=sop_templates.id AND NOT(b.branch_id=ANY($3::uuid[])))) ${beforeCursor('sop_templates', 4)} ORDER BY created_at DESC,id DESC LIMIT 100`,
+          [req.actor.tenant_id, admins(req.actor), req.actor.scopes, cursor(after) || null],
         )
       ).rows,
     };
@@ -144,7 +148,12 @@ export class SopTemplatesController {
         z.uuid().parse(raw),
       ])
     ).rows[0];
-    if (!row) throw new NotFoundException('Template SOP tidak ditemukan.');
+    if (
+      !row ||
+      (!admins(req.actor) &&
+        row.content.branch_ids.some((id: string) => !req.actor.scopes.includes(id)))
+    )
+      throw new NotFoundException('Template SOP tidak ditemukan.');
     return row;
   }
   @Post() async create(@Req() req: ApiRequest, @Body() body: unknown) {
@@ -160,6 +169,9 @@ export class SopTemplatesController {
     return this.save(req, schema.parse(body), z.uuid().parse(raw));
   }
   private async save(req: ApiRequest, input: z.infer<typeof schema>, previous?: string) {
+    if (!admins(req.actor) && input.branch_ids.some((id) => !req.actor.scopes.includes(id)))
+      throw new ForbiddenException();
+    if (previous) await this.detail(req, previous);
     return this.db.transaction(async (db) => {
       await db.query('SELECT id FROM tenants WHERE id=$1 FOR UPDATE', [req.actor.tenant_id]);
       let moduleId = randomUUID(),
@@ -243,6 +255,7 @@ export class SopTemplatesController {
     manage(req);
     z.strictObject({ confirm: z.literal(true) }).parse(body);
     const id = z.uuid().parse(raw);
+    await this.detail(req, id);
     return this.db.transaction(async (db) => {
       if (status === 'published') {
         const draft = (

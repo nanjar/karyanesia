@@ -210,3 +210,41 @@ Belum selesai FR-07/FR-08: jadwal harian/hari tertentu, penerima eksplisit, gene
 - Daftar tugas dibatasi tenant: staf hanya miliknya, supervisor hanya cabang grant, OWNER/ADMIN seluruh tenant (100 terbaru berdasarkan tenggat).
 - Validasi: 62 integration tests, termasuk lintas tenant, peran, konkurensi, shift malam, snapshot immutable dan unassigned.
 - Batas tahap: API saja; UI jadwal/daftar tugas, worker otomatis, penghentian/revisi jadwal, penugasan ulang, notifikasi, jawaban draft, submit/review dan issue belum tersedia. Tidak ada tugas yang dianggap selesai atau diterima otomatis.
+
+### 4C–6A — Pelaksanaan SOP, kendala, keterampilan dan operasi
+
+- SOP memiliki draft server, pemeriksaan tipe/required/bukti foto, kewajiban kendala untuk nilai tidak sesuai, submit, auto-accept template tanpa item kritis, review manusia, perbaikan, pengecualian dan pembatalan beralasan. Histori append-only, revision dan kunci idempotensi menjaga concurrency. Self-review ditolak; first_submitted_at dipertahankan.
+- Kendala mendukung kategori/prioritas, penanggung jawab/tenggat tervalidasi, assigned → in_progress → resolved → closed/reopened, catatan tindakan, scope cabang dan antrean prioritas tinggi. Layar memuat instruksi untuk menghubungi kontak internal saat mendesak.
+- Worker terpisah menjalankan catch-up jadwal hingga tanggal lokal hari ini (maksimal 100 tanggal per tick), retry eksponensial hingga lima kegagalan, antrean gagal dan heartbeat. Jadwal dapat dihentikan; histori tetap tersedia. Operator dapat retry job gagal dengan alasan dan audit.
+- Notifikasi dalam aplikasi berasal dari source record persisten, dengan unique delivery key untuk tugas baru, reminder tenggat, keterlambatan, hasil teori/praktik, perbaikan SOP, unassigned dan kendala tinggi. Judul generik; tautan memerlukan sesi dan izin API.
+- Definisi kompetensi immutable menunjuk versi materi+rubrik. Matriks menghitung not_started/learning/theory_passed/verified/expired dari bukti, masa berlaku opsional, serta kekurangan syarat jabatan berikutnya. Persyaratan jabatan berversi; tidak ada ranking/promosi otomatis. Kanal koreksi data dan penyelesaian tercatat.
+- Laporan periode/cabang/jabatan/jalur/status, detail sumber, as_of, definisi denominator SOP dan ekspor CSV dengan audit serta perlindungan formula injection tersedia. Jabatan onboarding disimpan dari target historis. Persentase tanpa denominator bernilai null.
+- Unggah gambar JPEG/PNG/WebP maksimal 5 MB: pemeriksaan format aktual/pixel limit, pemindaian ClamAV fail-closed, normalisasi PNG dan pembuangan metadata. Private media endpoint membutuhkan sesi, izin objek dan signature 120 detik terikat membership. Kuis mendukung gambar pertanyaan/opsi dengan alt text; kunci tetap disembunyikan. Foto SOP wajib diverifikasi sebelum submit. Tidak ada unggah video.
+- HR dapat mengelola materi/jalur/rubrik; penugasan HR/ops/supervisor mengikuti grant cabang. Ops mengelola template/jadwal sesuai scope. Admin dapat mengubah role/scope/kapabilitas penilai dan mencabut sesi; perpindahan staf menyediakan preview dampak dan mempertahankan histori; reset akun memakai token sekali pakai 24 jam.
+- UI tersedia untuk SOP/kendala, jadwal/generate/stop, kompetensi/persyaratan/koreksi, laporan/CSV, notifikasi serta lifecycle anggota. Beberapa daftar masih dibatasi 100 item per tampilan; perlu pagination lanjutan sebelum kapasitas pilot 1.000 staf/tenant dinyatakan teruji.
+- Ditambahkan uji restore logis PostgreSQL 16 dalam CI (database sintetis terisolasi, skema, gambar/checksum, tenant predicate dan trigger immutable), skrip backup, log request JSON dan health worker khusus admin.
+
+### Keputusan arsitektur implementasi — 16 Oktober 2026
+
+1. Antrean worker MVP menggunakan tabel PostgreSQL (lease, retry/backoff, unique keys) sebagai pengganti usulan Redis/BullMQ. Mengurangi layanan dan menjaga transaksi sumber kebenaran tunggal. Ukuran batch dan polling 60 detik perlu diukur pada beban pilot.
+2. Gambar privat MVP disimpan sebagai bytea PostgreSQL, bukan layanan S3 terpisah. Batas 5 MB, hanya gambar yang dipindai/normalisasi. Backup database mencakup byte aset; biaya/ukuran database harus dipantau. Migrasi ke object storage menjadi tindak lanjut kapasitas; akses privat dan signature tetap wajib.
+3. ClamAV wajib tersedia untuk unggah di luar lingkungan test. Test hanya melewati jaringan AV; integrasi signature AV dan kapasitas memori di server produksi harus diverifikasi sebelum go-live.
+
+### Gate yang belum boleh diklaim selesai
+
+- UAT pengguna/perusahaan pilot, persetujuan konten dan kebijakan data/retensi, admin/supervisor terlatih.
+- Deployment produksi, TLS, backup harian aktif di lokasi terpisah, alarm eksternal serta pengujian pemulihan pada infrastruktur tujuan.
+- Audit visual/browser 360 px, keyboard/screen reader dan Safari iOS; belum tersedia browser lokal pada lingkungan pengembangan ini.
+- Profil beban 10 tenant × 1.000 staf / 200 pengguna, p95 ≤800 ms dan cold-start Android/4G ≤3 detik belum terbukti.
+- Karena gate operasional dan UAT di atas, rilis belum diberi status 100% atau siap produksi.
+
+### 6B — Penutupan gap aplikasi dan pengujian
+
+- Pemutar YouTube memakai IFrame API resmi, dimuat setelah klik; posisi disimpan per pengguna/versi dengan revision dan pemeriksaan konteks assignment. Transkrip/fallback tetap tersedia, video tidak pernah diambil server. Durasi 1–300 detik wajib pada materi video baru; penulis memverifikasi durasi. ID YouTube dan URL kanonis disimpan.
+- Metadata materi mencakup deskripsi, jabatan sasaran, kompetensi terkait dan gambar pendukung. Kuis visual tetap mensyaratkan teks/alt setara.
+- Ditambahkan cursor pagination versi, jadwal, tugas SOP/onboarding, kendala, notifikasi serta matriks; picker staf menelusuri halaman hingga 5.000 anggota dalam scope. Antrean praktik tetap menampilkan 100 pending terlama untuk menjaga prioritas.
+- Layar Hari Ini menampilkan ringkasan tugas aktif; pengelolaan kendala memakai pilihan penanggung jawab, histori tindakan dan idempotency key. Admin dapat menyiapkan MFA saat menaikkan anggota menjadi admin; secret tidak masuk audit/log.
+- Laporan mencakup keterampilan expired dan pengajuan SOP terlambat. Golden fixture memverifikasi denominator 5, tepat waktu 1 (20%), accepted 2 (1 terlambat), excused 1, cancelled 2 (sebelum/sesudah mulai), unassigned 1.
+- Load smoke lokal: 10 tenant × 1.000 staf, 200 request serentak, 80% baca/20% tulis, p95 sekitar 636–639 ms pada PGlite dalam lingkungan pengembangan. CI PostgreSQL menjalankan profil sama dengan assertion p95 ≤800 ms. Ini bukan jaminan kapasitas/latensi VPS atau bukti cold-start Android.
+- Scanner protocol diuji untuk unavailable/OK/FOUND. Signature ClamAV aktual dan kapasitasnya tetap perlu diperiksa pada host deployment.
+- Worker membedakan `execution_source=worker` pada audit pembangkitan; menggunakan admin tenant aktif sebagai identitas eksekusi jadwal yang sudah disetujui. Antrean gagal/pending tidak menghalangi penemuan tanggal jadwal berikutnya.

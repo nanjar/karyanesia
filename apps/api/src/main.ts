@@ -4,7 +4,7 @@ import { AppModule } from './app';
 import { setup } from './setup';
 import { CONFIG, Config } from './config';
 async function main() {
-  const app = await NestFactory.create(AppModule, { bodyParser: true });
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
   setup(app);
   app.enableShutdownHooks();
   await app.listen(app.get<Config>(CONFIG).PORT, '0.0.0.0');

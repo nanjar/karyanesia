@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Database } from './database';
 import { SessionGuard } from './security';
-import { ApiRequest, admins } from './types';
+import { ApiRequest, admins, assessors } from './types';
 import { audit } from './audit';
 import { digest } from './crypto';
 import { stepLearningGate } from './learning-access';
@@ -34,8 +34,7 @@ export class PracticeRequestsController {
   constructor(@Inject(Database) private db: Database) {}
   @Get('practice-queue') async queue(@Req() req: ApiRequest) {
     const a = req.actor;
-    if (!admins(a) && a.role !== 'SUPERVISOR')
-      throw new ForbiddenException('Akses penilai diperlukan.');
+    if (!assessors(a)) throw new ForbiddenException('Akses penilai diperlukan.');
     const rows = (
       await this.db.query(
         `SELECT t.*,t.start_date::text AS start_date,u.full_name,m.employee_number FROM onboarding_assignments t JOIN memberships m ON m.tenant_id=t.tenant_id AND m.id=t.membership_id JOIN users u ON u.id=m.user_id WHERE t.tenant_id=$1 AND t.status<>'cancelled' AND m.active AND u.active AND t.membership_id<>$2 AND ($3 OR m.branch_id=ANY($4::uuid[])) AND EXISTS(SELECT 1 FROM practice_requests r LEFT JOIN practice_assessments p ON p.tenant_id=r.tenant_id AND p.request_id=r.id WHERE r.tenant_id=t.tenant_id AND r.assignment_id=t.id AND p.id IS NULL) ORDER BY t.created_at,t.id LIMIT 100`,

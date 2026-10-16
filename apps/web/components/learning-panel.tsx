@@ -1,13 +1,27 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { ImageUpload, PrivateImage, ImageRef } from './private-image';
+import { YouTubePlayer } from './youtube-player';
+import { PagedMore } from './paged-more';
 import { api } from '../app/api';
 type Content = {
   video_url?: string;
+  images?: ImageRef[];
+  description?: string;
+  target_job_ids?: string[];
+  competency_ids?: string[];
+  video_duration_seconds?: number;
   title: string;
   objective: string;
   transcript: string;
   pass_score: number;
-  questions: { prompt: string; options: string[]; correct?: number }[];
+  questions: {
+    prompt: string;
+    options: string[];
+    correct?: number;
+    prompt_image?: ImageRef;
+    option_images?: (ImageRef | null)[];
+  }[];
 };
 type Result = { score: number; passed: boolean; attempt: number; round?: number };
 type Detail = {
@@ -82,8 +96,8 @@ export function LearningPanel({
     <section className="learning-panel">
       <div className="alert">
         Materi teks, tautan video YouTube & kuis teori. Penugasan tersedia pada menu Tugas
-        onboarding. Gambar belum tersedia; praktik dinilai melalui tugas. Lulus teori belum berarti
-        kompeten.
+        onboarding. Gambar tersedia dengan akses privat; praktik dinilai melalui tugas. Lulus teori
+        belum berarti kompeten.
       </div>
       {notice && (
         <p role="status" className="alert success">
@@ -115,6 +129,13 @@ export function LearningPanel({
                 {!i.learning_available && <p>{i.learning_locked_reason}</p>}
               </div>
             ))}
+            <PagedMore
+              path="learning"
+              lastId={items.at(-1)?.id}
+              enabled={items.length > 0 && items.length % 100 === 0}
+              onPage={(rows) => setItems((old) => [...old, ...rows])}
+              onError={onError}
+            />
           </section>
         )}
         {detail && (
@@ -177,21 +198,16 @@ export function LearningPanel({
               <p className="alert">Versi ini telah diarsipkan. Pengiriman jawaban ditutup.</p>
             )}
             {detail.content.video_url && (
-              <div className="learning-video">
-                <p>
-                  Video YouTube dimuat setelah Anda memilih buka. Ketersediaan dan izin pemutaran
-                  mengikuti pengaturan pemilik video.
-                </p>
-                <a
-                  className="secondary"
-                  href={detail.content.video_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Buka video di YouTube
-                </a>
-              </div>
+              <YouTubePlayer
+                key={detail.id}
+                url={detail.content.video_url}
+                versionId={detail.id}
+                assignmentId={assignmentId}
+              />
             )}
+            {detail.content.images?.map((image) => (
+              <PrivateImage key={image.asset_id} image={image} />
+            ))}
             <p className="learning-transcript">{detail.content.transcript}</p>
             <p>Batas lulus {detail.content.pass_score}% · Maksimal 3 percobaan per versi.</p>
             {detail.status === 'draft' ? (
@@ -258,6 +274,7 @@ export function LearningPanel({
                     <legend>
                       {i + 1}. {q.prompt}
                     </legend>
+                    {q.prompt_image && <PrivateImage image={q.prompt_image} />}
                     {q.options.map((o, j) => (
                       <label className="learning-option" key={j}>
                         <input
@@ -273,6 +290,7 @@ export function LearningPanel({
                             })
                           }
                         />
+                        {q.option_images?.[j] && <PrivateImage image={q.option_images[j]!} />}
                         {o}
                       </label>
                     ))}
@@ -305,6 +323,7 @@ export function LearningPanel({
       {admin && (
         <LearningEditor
           key={`${revision?.id ?? 'new'}-${editorSerial}`}
+          onError={onError}
           initial={revision}
           busy={busy}
           onCancel={() => setRevision(null)}
@@ -333,16 +352,31 @@ export function LearningPanel({
   );
 }
 function LearningEditor({
+  onError,
   initial,
   busy,
   onCancel,
   onSave,
 }: {
+  onError: (e: Error) => void;
   initial: Detail | null;
   busy: boolean;
   onCancel: () => void;
   onSave: (c: Content) => Promise<void>;
 }) {
+  const [jobChoices, setJobChoices] = useState<{ id: string; name: string }[]>([]),
+    [skillChoices, setSkillChoices] = useState<{ id: string; content: { name: string } }[]>([]);
+  useEffect(() => {
+    void Promise.all([
+      api<{ id: string; name: string }[]>('jobs'),
+      api<{ id: string; content: { name: string } }[]>('competencies'),
+    ])
+      .then(([jobs, skills]) => {
+        setJobChoices(jobs);
+        setSkillChoices(skills);
+      })
+      .catch(onError);
+  }, []);
   const empty = (): Content => ({
     title: '',
     objective: '',
@@ -389,6 +423,76 @@ function LearningEditor({
                 })
               }
             />
+          </label>
+          {content.video_url && (
+            <label>
+              Durasi video yang telah Anda periksa (detik; sasaran 120, maksimal 300)
+              <input
+                required
+                type="number"
+                min={1}
+                max={300}
+                value={content.video_duration_seconds || ''}
+                onChange={(e) =>
+                  setContent((c) => ({ ...c, video_duration_seconds: Number(e.target.value) }))
+                }
+              />
+            </label>
+          )}
+          <ImageUpload
+            onError={onError}
+            onUploaded={(image) =>
+              setContent((c) => ({ ...c, images: [...(c.images || []), image] }))
+            }
+          />
+          {content.images?.map((image) => (
+            <PrivateImage key={image.asset_id} image={image} />
+          ))}
+          <label>
+            Deskripsi
+            <input
+              maxLength={2000}
+              value={content.description || ''}
+              onChange={(e) => setContent((c) => ({ ...c, description: e.target.value }))}
+            />
+          </label>
+          <label>
+            Jabatan sasaran (opsional)
+            <select
+              multiple
+              value={content.target_job_ids || []}
+              onChange={(e) =>
+                setContent((c) => ({
+                  ...c,
+                  target_job_ids: Array.from(e.target.selectedOptions, (o) => o.value),
+                }))
+              }
+            >
+              {jobChoices.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Kompetensi terkait (opsional)
+            <select
+              multiple
+              value={content.competency_ids || []}
+              onChange={(e) =>
+                setContent((c) => ({
+                  ...c,
+                  competency_ids: Array.from(e.target.selectedOptions, (o) => o.value),
+                }))
+              }
+            >
+              {skillChoices.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.content.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Judul
@@ -441,6 +545,11 @@ function LearningEditor({
                   onChange={(e) => updateQuestion(i, { prompt: e.target.value })}
                 />
               </label>
+              <ImageUpload
+                onError={onError}
+                onUploaded={(image) => updateQuestion(i, { prompt_image: image })}
+              />
+              {q.prompt_image && <PrivateImage image={q.prompt_image} />}
               {q.options.map((option, j) => (
                 <div key={j} className="learning-option-editor">
                   <label>
@@ -456,6 +565,17 @@ function LearningEditor({
                       }
                     />
                   </label>
+                  <ImageUpload
+                    onError={onError}
+                    onUploaded={(image) =>
+                      updateQuestion(i, {
+                        option_images: q.options.map((_, k) =>
+                          k === j ? image : q.option_images?.[k] || null,
+                        ),
+                      })
+                    }
+                  />
+                  {q.option_images?.[j] && <PrivateImage image={q.option_images[j]!} />}
                   <button
                     className="text-button"
                     type="button"
@@ -464,6 +584,9 @@ function LearningEditor({
                     onClick={() =>
                       updateQuestion(i, {
                         options: q.options.filter((_, k) => k !== j),
+                        ...(q.option_images
+                          ? { option_images: q.option_images.filter((_, k) => k !== j) }
+                          : {}),
                         correct:
                           q.correct === j
                             ? 0
@@ -495,7 +618,12 @@ function LearningEditor({
                   className="secondary"
                   type="button"
                   disabled={q.options.length >= 5}
-                  onClick={() => updateQuestion(i, { options: [...q.options, ''] })}
+                  onClick={() =>
+                    updateQuestion(i, {
+                      options: [...q.options, ''],
+                      ...(q.option_images ? { option_images: [...q.option_images, null] } : {}),
+                    })
+                  }
                 >
                   Tambah opsi
                 </button>
