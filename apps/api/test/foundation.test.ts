@@ -770,3 +770,104 @@ test('five-question versions grade all answers and revisions retain video and or
     [4, 4, 4, 4, 4],
   );
 });
+
+test('supervisor resets failed theory within branch scope and preserves all attempts', async () => {
+  supervisorCookie = cookie(
+    await post('auth/login')
+      .send({ company_code: 'company-0', employee_number: 'SUP1', password })
+      .expect(200),
+  );
+  const learner = (
+    await db.query("SELECT id FROM memberships WHERE tenant_id=$1 AND employee_number='LEARN1'", [
+      tenants[0],
+    ])
+  ).rows[0].id;
+  const supervisor = (
+    await db.query("SELECT id FROM memberships WHERE tenant_id=$1 AND employee_number='SUP1'", [
+      tenants[0],
+    ])
+  ).rows[0].id;
+  const version = (await post('learning', cookies[0]).send(learningContent)).body.id;
+  await post(`learning/${version}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const reason = 'Latihan ulang setelah pendampingan supervisor',
+    idempotency_key = randomUUID();
+  const payload = { membership_id: learner, reason, idempotency_key };
+  await post(`learning/${version}/resets`, supervisorCookie).send(payload).expect(409);
+  const firstKey = randomUUID();
+  for (let i = 0; i < 3; i++)
+    await post(`learning/${version}/attempts`, learnerCookie)
+      .send({ idempotency_key: i === 0 ? firstKey : randomUUID(), answers: [1] })
+      .expect(201);
+  await post(`learning/${version}/resets`, learnerCookie).send(payload).expect(403);
+  await post(`learning/${version}/resets`, cookies[1]).send(payload).expect(404);
+  await post(`learning/${version}/resets`, supervisorCookie)
+    .send({ ...payload, reason: 'short' })
+    .expect(422);
+  await post(`learning/${version}/resets`, supervisorCookie)
+    .send({ ...payload, membership_id: supervisor })
+    .expect(403);
+  const otherBranch = randomUUID();
+  await db.query(
+    "INSERT INTO branches(id,tenant_id,code,name,timezone) VALUES($1,$2,'OTHER_LEARN','Other','Asia/Jakarta')",
+    [otherBranch, tenants[0]],
+  );
+  await db.query('UPDATE memberships SET branch_id=$1 WHERE id=$2', [otherBranch, learner]);
+  assert.equal((await get(`learning/${version}/blocked`, supervisorCookie)).body.items.length, 0);
+  await post(`learning/${version}/resets`, supervisorCookie).send(payload).expect(404);
+  await db.query('UPDATE memberships SET branch_id=$1 WHERE id=$2', [branches[0], learner]);
+  assert.equal(
+    (await get(`learning/${version}/blocked`, supervisorCookie)).body.items[0].id,
+    learner,
+  );
+  const results = await Promise.all([
+    post(`learning/${version}/resets`, supervisorCookie).send(payload),
+    post(`learning/${version}/resets`, supervisorCookie).send({
+      ...payload,
+      idempotency_key: randomUUID(),
+    }),
+  ]);
+  assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
+  const stored = (await db.query('SELECT * FROM learning_resets WHERE version_id=$1', [version]))
+    .rows[0];
+  const replayPayload = { ...payload, idempotency_key: stored.idempotency_key };
+  assert.equal(
+    (await post(`learning/${version}/resets`, supervisorCookie).send(replayPayload).expect(201))
+      .body.round,
+    2,
+  );
+  await post(`learning/${version}/resets`, supervisorCookie)
+    .send({ ...replayPayload, reason: 'Alasan berbeda tidak diizinkan' })
+    .expect(409);
+  const detail = (await get(`learning/${version}`, learnerCookie)).body;
+  assert.equal(detail.attempts.length, 3);
+  assert.equal(detail.budget.remaining, 3);
+  assert.equal(detail.budget.round, 2);
+  const replay = (
+    await post(`learning/${version}/attempts`, learnerCookie)
+      .send({ idempotency_key: firstKey, answers: [1] })
+      .expect(201)
+  ).body;
+  assert.equal(replay.round, 1);
+  const success = (
+    await post(`learning/${version}/attempts`, learnerCookie)
+      .send({ idempotency_key: randomUUID(), answers: [0] })
+      .expect(201)
+  ).body;
+  assert.equal(success.round, 2);
+  assert.equal(success.attempt, 1);
+  assert.equal(success.passed, true);
+  for (let i = 0; i < 2; i++)
+    await post(`learning/${version}/attempts`, learnerCookie)
+      .send({ idempotency_key: randomUUID(), answers: [1] })
+      .expect(201);
+  await post(`learning/${version}/resets`, supervisorCookie)
+    .send({ ...payload, idempotency_key: randomUUID() })
+    .expect(409);
+  assert.equal((await get(`learning/${version}`, learnerCookie)).body.attempts.length, 6);
+  assert.equal((await get(`learning/${version}/blocked`, supervisorCookie)).body.items.length, 0);
+  await assert.rejects(
+    db.query("UPDATE learning_resets SET reason='Changed reason' WHERE id=$1", [stored.id]),
+  );
+  const audits = (await get('audit-events', cookies[0])).body;
+  assert.ok(audits.some((e: any) => e.action === 'learning.attempts_reset'));
+});

@@ -159,3 +159,9 @@ Buka **Materi & kuis** sebagai OWNER/ADMIN. Isi judul, tujuan, transkrip dan tau
 Untuk memperbaiki materi, pilih versi pada pustaka lalu **Revisi ke versi baru**. Konfirmasi penggantian editor, ubah isi pada editor di bawah dan simpan. Versi sebelumnya beserta percobaan staf tidak berubah. Revisi perlu diterbitkan tersendiri. **Arsipkan versi** menghentikan akses pustaka staf dan submit baru tanpa menghapus histori. Arsip tidak membatalkan hasil yang sudah tersimpan.
 
 Materi yang belum tersimpan hilang jika halaman ditutup. Kegagalan simpan mempertahankan input selama halaman tetap terbuka. Gambar pada soal, jalur onboarding dan observasi praktik belum tersedia; hasil kuis hanya menunjukkan kelulusan teori.
+
+### Mendampingi staf yang gagal kuis
+
+Buka materi terbit sebagai SUPERVISOR, OWNER atau ADMIN. Bagian **Pendampingan staf** menampilkan staf yang gagal tiga kali dan belum lulus. Supervisor hanya melihat cabang dalam scope-nya. Isi **Alasan dan arahan latihan** minimal 10 karakter, lalu pilih **Buka tiga percobaan baru** dan konfirmasi. Gunakan **Perbarui daftar** untuk memuat ulang antrean.
+
+Staf membuka kembali materi dari pustaka untuk memuat jatah terbaru. Rangkaian baru menyediakan tiga percobaan; semua hasil lama dan alasan reset tetap tampil di riwayat. Reset tidak meluluskan teori atau praktik secara otomatis. Video tetap menggunakan tautan YouTube saja.

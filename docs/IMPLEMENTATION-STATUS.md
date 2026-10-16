@@ -84,7 +84,7 @@ Batas yang masih berlaku: impor diproses dalam transaksi API, belum melalui work
 - API arsip menghentikan akses pustaka/submission baru, sementara histori tetap tersimpan. Replay submission lama tetap tersedia melalui key yang sama.
 - Lulus teori tidak menandai praktik atau onboarding selesai. Hasil eksplisit `practice_status: not_assessed`.
 
-Belum selesai: aset gambar privat dan validasi file, signed URL gambar, kompetensi dan jabatan sasaran, pembukaan ulang percobaan oleh supervisor, jalur/assignment/snapshot, observasi praktik. Tidak ada klaim durasi video atau kompetensi staf. Daftar pustaka awal dibatasi 100 versi terbaru; pagination belum tersedia. Visual QA browser masih perlu dijalankan sebelum pilot.
+Belum selesai: aset gambar privat dan validasi file, signed URL gambar, kompetensi dan jabatan sasaran, jalur/assignment/snapshot, observasi praktik. Tidak ada klaim durasi video atau kompetensi staf. Daftar pustaka awal dibatasi 100 versi terbaru; pagination belum tersedia. Visual QA browser masih perlu dijalankan sebelum pilot.
 
 API tambahan (memerlukan sesi dan Origin untuk POST): `GET/POST /api/v1/learning`, `GET /api/v1/learning/:id`, `POST .../:id/revise`, `POST .../:id/publish`, `POST .../:id/archive`, `POST .../:id/attempts`. Publikasi/arsip memakai `{ "confirm": true }`; submit memakai UUID `idempotency_key` dan array `answers` berindeks nol. Revisi memakai struktur konten yang sama seperti create. Semua pengelolaan terbatas OWNER/ADMIN pada tahap ini.
 
@@ -95,3 +95,12 @@ Materi menerima `video_url` opsional berupa HTTPS youtube.com/watch, /shorts, /e
 ### Editor materi lengkap — 16 Oktober 2026
 
 UI mendukung tambah/hapus soal dan opsi dengan batas API, pilihan kunci jawaban, revisi dari versi yang dipilih menjadi draft baru, serta arsip versi terbit dengan konfirmasi. Penghapusan opsi menyesuaikan indeks kunci. Versi arsip diberi label yang sesuai dan tidak menampilkan form submit kuis. Editor dibersihkan setelah penyimpanan berhasil; kegagalan API mempertahankan input. Konfirmasi ditampilkan sebelum penggantian isi editor untuk revisi. Video tetap hanya melalui tautan YouTube. Pemeriksaan visual/interaksi browser belum dijalankan.
+
+### Pembukaan ulang percobaan teori — 16 Oktober 2026
+
+- Supervisor membuka tiga percobaan baru untuk STAFF aktif dalam scope cabang; OWNER/ADMIN dapat mengelola seluruh tenant. Self-reset ditolak. HR/OPERATIONS dan STAFF tidak diberi akses reset.
+- Menu pendampingan pada materi terbit menampilkan hingga 100 staf yang gagal tiga kali dan belum pernah lulus versi tersebut. Alasan 10–1.000 karakter wajib, dengan konfirmasi UI.
+- Setiap rangkaian memiliki batas tiga percobaan sendiri. Reset tidak mengubah versi kuis, jawaban, hasil lama, atau kompetensi. Histori pembukaan ulang dan alasannya terlihat pada detail materi staf sendiri.
+- Reset disimpan append-only dan diaudit. Lock anggota yang sama dengan submit mencegah penambahan jatah ganda pada request serentak. Idempotency key yang sama mengembalikan hasil reset lama, sedangkan payload berbeda ditolak.
+- API: `GET /api/v1/learning/:id/blocked` dan `POST /api/v1/learning/:id/resets` dengan `{membership_id, reason, idempotency_key}`. Detail materi menambahkan `budget` (round/used/remaining) dan `resets`; attempt baru mencatat `round`. Migrasi 004 mempertahankan seluruh attempt lama sebagai rangkaian pertama.
+- Pembukaan ulang hanya untuk versi terbit. Tidak mengubah status onboarding/praktik. Pagination antrean, notifikasi otomatis dan pemeriksaan visual browser belum tersedia.

@@ -9,15 +9,25 @@ type Content = {
   pass_score: number;
   questions: { prompt: string; options: string[]; correct?: number }[];
 };
-type Result = { score: number; passed: boolean; attempt: number };
+type Result = { score: number; passed: boolean; attempt: number; round?: number };
 type Detail = {
   id: string;
   version: number;
   status: string;
   content: Content;
+  budget: { round: number; used: number; remaining: number };
+  resets: { round: number; reason: string; created_at: string }[];
   attempts: { id: string; result: Result }[];
 };
-export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e: Error) => void }) {
+export function LearningPanel({
+  admin,
+  canReset,
+  onError,
+}: {
+  admin: boolean;
+  canReset: boolean;
+  onError: (e: Error) => void;
+}) {
   const [items, setItems] = useState<
       { id: string; title: string; status: string; version: number }[]
     >([]),
@@ -234,16 +244,25 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
                     ))}
                   </fieldset>
                 ))}
-                <button className="primary" disabled={busy || detail.attempts.length >= 3}>
-                  Kirim jawaban ({detail.attempts.length}/3)
+                <button className="primary" disabled={busy || detail.budget.remaining === 0}>
+                  Kirim jawaban ({detail.budget.used}/3 · rangkaian {detail.budget.round})
                 </button>
               </form>
             ) : null}
+            {canReset && detail.status === 'published' && (
+              <RetryPanel key={detail.id} versionId={detail.id} onError={onError} />
+            )}
             <h3>Riwayat teori Anda</h3>
+            {detail.resets.map((r) => (
+              <p key={r.round}>
+                Rangkaian {r.round} dibuka {new Date(r.created_at).toLocaleString('id-ID')}:{' '}
+                {r.reason}
+              </p>
+            ))}
             {detail.attempts.map((a) => (
               <p key={a.id}>
-                Percobaan {a.result.attempt}: {a.result.score.toFixed(1)}% ·{' '}
-                {a.result.passed ? 'Lulus teori' : 'Belum lulus'}
+                Rangkaian {a.result.round ?? 1} · percobaan {a.result.attempt}:{' '}
+                {a.result.score.toFixed(1)}% · {a.result.passed ? 'Lulus teori' : 'Belum lulus'}
               </p>
             ))}
           </section>
@@ -494,5 +513,96 @@ function LearningEditor({
         </fieldset>
       </form>
     </section>
+  );
+}
+
+function RetryPanel({ versionId, onError }: { versionId: string; onError: (e: Error) => void }) {
+  const [items, setItems] = useState<
+      { id: string; full_name: string; employee_number: string; round: number }[]
+    >([]),
+    [busy, setBusy] = useState(false),
+    [message, setMessage] = useState('');
+  async function load() {
+    setItems((await api<{ items: typeof items }>(`learning/${versionId}/blocked`)).items);
+  }
+  useEffect(() => {
+    void load().catch(onError);
+  }, [versionId]);
+  return (
+    <section>
+      <h3>Pendampingan staf</h3>
+      <p>
+        Daftar staf dalam scope Anda yang gagal tiga kali dan belum lulus. Alasan pembukaan ulang
+        wajib dicatat. Maksimal 100 staf ditampilkan.
+      </p>
+      <button className="secondary" disabled={busy} onClick={() => void load().catch(onError)}>
+        Perbarui daftar
+      </button>
+      {message && <p role="status">{message}</p>}
+      {!items.length && <p>Tidak ada staf yang perlu dibuka ulang pada daftar ini.</p>}
+      {items.map((item) => (
+        <RetryForm
+          key={item.id}
+          item={item}
+          disabled={busy}
+          onSubmit={async (reason, idempotency_key) => {
+            setBusy(true);
+            try {
+              await api(`learning/${versionId}/resets`, 'POST', {
+                membership_id: item.id,
+                reason,
+                idempotency_key,
+              });
+              setMessage(`Tiga percobaan baru dibuka untuk ${item.full_name}.`);
+              await load();
+            } catch (e) {
+              onError(e as Error);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      ))}
+    </section>
+  );
+}
+function RetryForm({
+  item,
+  disabled,
+  onSubmit,
+}: {
+  item: { id: string; full_name: string; employee_number: string; round: number };
+  disabled: boolean;
+  onSubmit: (reason: string, key: string) => Promise<void>;
+}) {
+  const [reason, setReason] = useState(''),
+    [key] = useState(() => crypto.randomUUID());
+  return (
+    <form
+      className="learning-editor"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (window.confirm(`Buka tiga percobaan baru untuk ${item.full_name}?`))
+          await onSubmit(reason, key);
+      }}
+    >
+      <fieldset disabled={disabled}>
+        <legend>
+          {item.full_name} · {item.employee_number} · rangkaian {item.round}
+        </legend>
+        <label>
+          Alasan dan arahan latihan
+          <textarea
+            required
+            minLength={10}
+            maxLength={1000}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+          />
+        </label>
+        <button className="secondary">Buka tiga percobaan baru</button>
+      </fieldset>
+    </form>
   );
 }

@@ -541,7 +541,13 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
             </div>
           ) : (
             <>
-              {tab === 'learning' && <LearningPanel admin={admin} onError={handleError} />}
+              {tab === 'learning' && (
+                <LearningPanel
+                  admin={admin}
+                  canReset={admin || actor.role === 'SUPERVISOR'}
+                  onError={handleError}
+                />
+              )}
               {tab === 'import' && admin && (
                 <StaffImportPanel onCommitted={load} onError={handleError} />
               )}

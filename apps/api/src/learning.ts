@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { Database } from './database';
+import { Database, Executor } from './database';
 import { SessionGuard } from './security';
 import { admins, ApiRequest } from './types';
 import { audit } from './audit';
@@ -59,6 +59,32 @@ function visible(row: any, admin: boolean) {
       : { ...content, questions: content.questions.map(({ correct, ...q }: any) => q) },
   };
 }
+async function budget(db: Executor, tenant: string, member: string, version: string) {
+  const round = Number(
+    (
+      await db.query(
+        'SELECT COALESCE(MAX(round),1) AS n FROM learning_resets WHERE tenant_id=$1 AND membership_id=$2 AND version_id=$3',
+        [tenant, member, version],
+      )
+    ).rows[0].n,
+  );
+  const attempts = (
+    await db.query(
+      'SELECT result FROM learning_attempts WHERE tenant_id=$1 AND membership_id=$2 AND version_id=$3 AND round=$4',
+      [tenant, member, version, round],
+    )
+  ).rows;
+  return {
+    round,
+    used: attempts.length,
+    remaining: Math.max(0, 3 - attempts.length),
+    passed: attempts.some((v) => v.result.passed === true),
+  };
+}
+function assessor(req: ApiRequest) {
+  if (!admins(req.actor) && req.actor.role !== 'SUPERVISOR')
+    throw new ForbiddenException('Akses supervisor diperlukan.');
+}
 @Controller('learning')
 @UseGuards(SessionGuard)
 export class LearningController {
@@ -103,11 +129,124 @@ export class LearningController {
     if (!row) throw new NotFoundException('Materi tidak ditemukan.');
     const attempts = (
       await this.db.query(
-        `SELECT id,result,created_at FROM learning_attempts WHERE tenant_id=$1 AND membership_id=$2 AND version_id=$3 ORDER BY created_at,id`,
+        `SELECT id,result,round,created_at FROM learning_attempts WHERE tenant_id=$1 AND membership_id=$2 AND version_id=$3 ORDER BY created_at,id`,
         [a.tenant_id, a.id, id],
       )
     ).rows;
-    return { ...visible(row, admins(a)), attempts };
+    return {
+      ...visible(row, admins(a)),
+      attempts,
+      budget: await budget(this.db, a.tenant_id, a.id, id),
+      resets: (
+        await this.db.query(
+          'SELECT round,reason,created_at FROM learning_resets WHERE tenant_id=$1 AND membership_id=$2 AND version_id=$3 ORDER BY round',
+          [a.tenant_id, a.id, id],
+        )
+      ).rows,
+    };
+  }
+  @Get(':id/blocked') async blocked(@Req() req: ApiRequest, @Param('id') raw: string) {
+    assessor(req);
+    const id = z.uuid().parse(raw),
+      a = req.actor;
+    const rows = (
+      await this.db.query(
+        `SELECT m.id,m.employee_number,u.full_name,COALESCE(r.round,1) AS round
+      FROM memberships m JOIN users u ON u.id=m.user_id
+      LEFT JOIN (SELECT membership_id,MAX(round) AS round FROM learning_resets WHERE tenant_id=$1 AND version_id=$2 GROUP BY membership_id) r ON r.membership_id=m.id
+      WHERE m.tenant_id=$1 AND m.active AND u.active AND m.role='STAFF' AND m.id<>$3 AND ($4 OR m.branch_id=ANY($5::uuid[]))
+      AND EXISTS(SELECT 1 FROM learning_versions v WHERE v.tenant_id=$1 AND v.id=$2 AND v.status='published')
+      AND (SELECT count(*) FROM learning_attempts t WHERE t.tenant_id=$1 AND t.version_id=$2 AND t.membership_id=m.id AND t.round=COALESCE(r.round,1))>=3
+      AND NOT EXISTS(SELECT 1 FROM learning_attempts t WHERE t.tenant_id=$1 AND t.version_id=$2 AND t.membership_id=m.id AND (t.result->>'passed')::boolean)
+      ORDER BY m.employee_number,m.id LIMIT 100`,
+        [a.tenant_id, id, a.id, admins(a), a.scopes],
+      )
+    ).rows;
+    return { items: rows };
+  }
+  @Post(':id/resets') async reset(
+    @Req() req: ApiRequest,
+    @Param('id') raw: string,
+    @Body() body: unknown,
+  ) {
+    assessor(req);
+    const id = z.uuid().parse(raw),
+      a = req.actor,
+      input = z
+        .strictObject({
+          membership_id: z.uuid(),
+          reason: z.string().trim().min(10).max(1000),
+          idempotency_key: z.uuid(),
+        })
+        .parse(body);
+    if (input.membership_id === a.id)
+      throw new ForbiddenException('Tidak dapat membuka percobaan sendiri.');
+    return this.db.transaction(async (db) => {
+      const target = (
+        await db.query(
+          `SELECT id FROM memberships WHERE tenant_id=$1 AND id=$2 AND active AND EXISTS(SELECT 1 FROM users u WHERE u.id=memberships.user_id AND u.active) AND role='STAFF' AND ($3 OR branch_id=ANY($4::uuid[])) FOR UPDATE`,
+          [a.tenant_id, input.membership_id, admins(a), a.scopes],
+        )
+      ).rows[0];
+      if (!target) throw new NotFoundException('Staf tidak ditemukan dalam scope Anda.');
+      const old = (
+        await db.query(
+          'SELECT * FROM learning_resets WHERE tenant_id=$1 AND actor_id=$2 AND idempotency_key=$3',
+          [a.tenant_id, a.id, input.idempotency_key],
+        )
+      ).rows[0];
+      if (old) {
+        if (
+          old.version_id !== id ||
+          old.membership_id !== input.membership_id ||
+          old.reason !== input.reason
+        )
+          throw new ConflictException('Kunci telah digunakan untuk permintaan lain.');
+        return { id: old.id, round: old.round };
+      }
+      if (
+        !(
+          await db.query(
+            "SELECT id FROM learning_versions WHERE tenant_id=$1 AND id=$2 AND status='published'",
+            [a.tenant_id, id],
+          )
+        ).rows[0]
+      )
+        throw new NotFoundException('Materi terbit tidak ditemukan.');
+      const current = await budget(db, a.tenant_id, input.membership_id, id);
+      const passed =
+        (
+          await db.query(
+            "SELECT id FROM learning_attempts WHERE tenant_id=$1 AND membership_id=$2 AND version_id=$3 AND (result->>'passed')::boolean LIMIT 1",
+            [a.tenant_id, input.membership_id, id],
+          )
+        ).rows.length > 0;
+      if (current.used !== 3 || passed)
+        throw new ConflictException(
+          'Pembukaan ulang hanya untuk staf yang gagal tiga kali dan belum lulus versi ini.',
+        );
+      const result = { id: randomUUID(), round: current.round + 1 };
+      await db.query(
+        'INSERT INTO learning_resets(id,tenant_id,version_id,membership_id,actor_id,round,reason,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+        [
+          result.id,
+          a.tenant_id,
+          id,
+          input.membership_id,
+          a.id,
+          result.round,
+          input.reason,
+          input.idempotency_key,
+        ],
+      );
+      await audit(db, a, req.correlationId, 'learning.attempts_reset', result.id, {
+        version_id: id,
+        membership_id: input.membership_id,
+        round: result.round,
+        reason: input.reason,
+      });
+      return result;
+    });
   }
   @Post(':id/revise') async revise(
     @Req() req: ApiRequest,
@@ -227,17 +366,11 @@ export class LearningController {
         input.answers.some((v, i) => v >= content.questions[i].options.length)
       )
         throw new ConflictException('Jawab seluruh soal dengan opsi yang tersedia.');
-      const count = Number(
-        (
-          await db.query(
-            'SELECT count(*) AS n FROM learning_attempts WHERE tenant_id=$1 AND membership_id=$2 AND version_id=$3',
-            [a.tenant_id, a.id, id],
-          )
-        ).rows[0].n,
-      );
+      const current = await budget(db, a.tenant_id, a.id, id);
+      const count = current.used;
       if (count >= 3)
         throw new ConflictException(
-          'Batas tiga percobaan tercapai. Pembukaan ulang oleh supervisor belum tersedia.',
+          'Batas tiga percobaan tercapai. Hubungi supervisor untuk pembukaan ulang.',
         );
       const correct = content.questions.filter((q, i) => q.correct === input.answers[i]).length,
         score = (correct / content.questions.length) * 100;
@@ -248,10 +381,11 @@ export class LearningController {
         score,
         passed: score >= content.pass_score,
         attempt: count + 1,
+        round: current.round,
         practice_status: 'not_assessed',
       };
       await db.query(
-        'INSERT INTO learning_attempts(id,tenant_id,version_id,membership_id,idempotency_key,answers,result) VALUES($1,$2,$3,$4,$5,$6,$7)',
+        'INSERT INTO learning_attempts(id,tenant_id,version_id,membership_id,idempotency_key,answers,result,round) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
         [
           result.id,
           a.tenant_id,
@@ -260,6 +394,7 @@ export class LearningController {
           input.idempotency_key,
           JSON.stringify(input.answers),
           JSON.stringify(result),
+          current.round,
         ],
       );
       await audit(db, a, req.correlationId, 'learning.theory_submitted', result.id, {
