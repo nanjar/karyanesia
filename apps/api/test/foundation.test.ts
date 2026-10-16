@@ -971,3 +971,249 @@ test('path publication revalidates module availability and concurrent revisions 
   const audit = (await get('audit-events', cookies[0])).body;
   assert.ok(audit.some((e: any) => e.action === 'onboarding_path.published'));
 });
+
+let assignmentPath = '',
+  assignmentBatch = '',
+  assignmentId = '';
+const assignmentStart = '2026-10-16';
+let assignmentLearner = '';
+const assignmentPayload = () => ({
+  path_version_id: assignmentPath,
+  start_date: assignmentStart,
+  target: { kind: 'staff', ids: [assignmentLearner] },
+});
+test('assignment previews validate targets and create no staff tasks before confirmation', async () => {
+  assignmentLearner = (
+    await db.query("SELECT id FROM memberships WHERE tenant_id=$1 AND employee_number='LEARN1'", [
+      tenants[0],
+    ])
+  ).rows[0].id;
+  const module = (await post('learning', cookies[0]).send(learningContent)).body.id;
+  await post(`learning/${module}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  assignmentPath = (
+    await post('onboarding-paths', cookies[0]).send({
+      title: 'Onboarding terjadwal',
+      description: 'Uji penugasan',
+      steps: [{ version_id: module, due_days: 0 }],
+    })
+  ).body.id;
+  await post(`onboarding-paths/${assignmentPath}/publish`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  await post('onboarding-assignments/preview', learnerCookie).send(assignmentPayload()).expect(403);
+  await post('onboarding-assignments/preview', supervisorCookie)
+    .send(assignmentPayload())
+    .expect(403);
+  await post('onboarding-assignments/preview', cookies[1]).send(assignmentPayload()).expect(409);
+  await post('onboarding-assignments/preview', cookies[0])
+    .send({ ...assignmentPayload(), start_date: '2026-02-30' })
+    .expect(422);
+  await post('onboarding-assignments/preview', cookies[0])
+    .send({ ...assignmentPayload(), target: { kind: 'branch', ids: [branches[1]] } })
+    .expect(404);
+  const preview = (
+    await post('onboarding-assignments/preview', cookies[0]).send(assignmentPayload()).expect(201)
+  ).body;
+  assignmentBatch = preview.id;
+  assert.equal(preview.count, 1);
+  assert.equal(preview.items[0].id, assignmentLearner);
+  assert.equal((await get('onboarding-assignments', learnerCookie)).body.items.length, 0);
+  await post(`onboarding-assignments/batches/${assignmentBatch}/commit`, cookies[1])
+    .send({ confirm: true })
+    .expect(404);
+  await post(`onboarding-assignments/batches/${assignmentBatch}/commit`, learnerCookie)
+    .send({ confirm: true })
+    .expect(403);
+});
+test('assignment confirmation is atomic and idempotent with local calendar deadlines', async () => {
+  const responses = await Promise.all(
+    [1, 2].map(() =>
+      post(`onboarding-assignments/batches/${assignmentBatch}/commit`, cookies[0]).send({
+        confirm: true,
+      }),
+    ),
+  );
+  assert.ok(responses.every((r) => r.status === 201));
+  assert.deepEqual(responses[0].body, responses[1].body);
+  assignmentId = responses[0].body.assignment_ids[0];
+  const list = (await get('onboarding-assignments', learnerCookie)).body.items;
+  assert.equal(list.length, 1);
+  assert.equal(list[0].status, 'assigned');
+  assert.equal(list[0].snapshot.steps[0].practice_required, true);
+  assert.equal(
+    new Date(list[0].snapshot.steps[0].due_at).toISOString(),
+    '2026-10-16T17:00:00.000Z',
+  );
+  assert.equal(list[0].timezone, 'Asia/Jakarta');
+  assert.equal(list[0].start_date, assignmentStart);
+  assert.equal('questions' in list[0].snapshot.steps[0], false);
+  assert.equal((await get('onboarding-assignments', cookies[1])).body.items.length, 0);
+  assert.ok(
+    (await get('onboarding-assignments', supervisorCookie)).body.items.some(
+      (t: any) => t.id === assignmentId,
+    ),
+  );
+  await assert.rejects(
+    db.query('UPDATE onboarding_assignments SET snapshot=$1 WHERE id=$2', [
+      JSON.stringify({ title: 'tampered' }),
+      assignmentId,
+    ]),
+  );
+  await assert.rejects(db.query('DELETE FROM onboarding_assignments WHERE id=$1', [assignmentId]));
+});
+test('assignment previews expire and reject changes to previewed staff context', async () => {
+  const expired = (
+    await post('onboarding-assignments/preview', cookies[0]).send(assignmentPayload())
+  ).body.id;
+  await db.query(
+    "UPDATE onboarding_assignment_batches SET expires_at=now()-interval '1 minute' WHERE id=$1",
+    [expired],
+  );
+  await post(`onboarding-assignments/batches/${expired}/commit`, cookies[0])
+    .send({ confirm: true })
+    .expect(410);
+  const batch = (await post('onboarding-assignments/preview', cookies[0]).send(assignmentPayload()))
+    .body.id;
+  const branch = randomUUID();
+  await db.query(
+    "INSERT INTO branches(id,tenant_id,code,name,timezone) VALUES($1,$2,'ASSIGN_WITA','WITA','Asia/Makassar')",
+    [branch, tenants[0]],
+  );
+  await db.query('UPDATE memberships SET branch_id=$1 WHERE id=$2', [branch, assignmentLearner]);
+  await post(`onboarding-assignments/batches/${batch}/commit`, cookies[0])
+    .send({ confirm: true })
+    .expect(409);
+  assert.equal(
+    Number(
+      (
+        await db.query('SELECT count(*) AS n FROM onboarding_assignments WHERE batch_id=$1', [
+          batch,
+        ])
+      ).rows[0].n,
+    ),
+    0,
+  );
+  const wita = (await post('onboarding-assignments/preview', cookies[0]).send(assignmentPayload()))
+    .body.id;
+  const confirmed = (
+    await post(`onboarding-assignments/batches/${wita}/commit`, cookies[0])
+      .send({ confirm: true })
+      .expect(201)
+  ).body.assignment_ids[0];
+  const row = (
+    await db.query('SELECT snapshot FROM onboarding_assignments WHERE id=$1', [confirmed])
+  ).rows[0];
+  assert.equal(new Date(row.snapshot.steps[0].due_at).toISOString(), '2026-10-16T16:00:00.000Z');
+  assert.ok(
+    !(await get('onboarding-assignments', supervisorCookie)).body.items.some(
+      (t: any) => t.membership_id === assignmentLearner,
+    ),
+  );
+  await db.query('UPDATE memberships SET branch_id=$1 WHERE id=$2', [
+    branches[0],
+    assignmentLearner,
+  ]);
+});
+test('path archival preserves assigned snapshots and cancellation requires reason and audit', async () => {
+  await post(`onboarding-paths/${assignmentPath}/archive`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  await post(`onboarding-assignments/batches/${assignmentBatch}/commit`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  await post('onboarding-assignments/preview', cookies[0]).send(assignmentPayload()).expect(409);
+  assert.ok(
+    (await get('onboarding-assignments', learnerCookie)).body.items.some(
+      (t: any) => t.id === assignmentId,
+    ),
+  );
+  const reason = 'Perubahan rencana orientasi kerja staf';
+  await post(`onboarding-assignments/${assignmentId}/cancel`, learnerCookie)
+    .send({ reason })
+    .expect(403);
+  await post(`onboarding-assignments/${assignmentId}/cancel`, cookies[1])
+    .send({ reason })
+    .expect(404);
+  await post(`onboarding-assignments/${assignmentId}/cancel`, cookies[0])
+    .send({ reason: 'short' })
+    .expect(422);
+  await post(`onboarding-assignments/${assignmentId}/cancel`, cookies[0])
+    .send({ reason })
+    .expect(201);
+  await post(`onboarding-assignments/${assignmentId}/cancel`, cookies[0])
+    .send({ reason })
+    .expect(201);
+  await post(`onboarding-assignments/${assignmentId}/cancel`, cookies[0])
+    .send({ reason: 'Alasan pembatalan yang berbeda' })
+    .expect(409);
+  const item = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (t: any) => t.id === assignmentId,
+  );
+  assert.equal(item.status, 'cancelled');
+  assert.equal(item.cancel_reason, reason);
+  assert.equal(item.snapshot.title, 'Onboarding terjadwal');
+  assert.ok(
+    (await get('audit-events', cookies[0])).body.some(
+      (e: any) => e.action === 'onboarding_assignment.cancelled',
+    ),
+  );
+});
+
+test('branch preview freezes the target set and job targeting remains tenant scoped', async () => {
+  const old = (await get('onboarding-paths/' + assignmentPath, cookies[0])).body;
+  const path = (
+    await post('onboarding-paths', cookies[0]).send({
+      title: 'Kelompok cabang',
+      description: 'Target tetap',
+      steps: old.content.steps.map((s: any) => ({
+        version_id: s.version_id,
+        due_days: s.due_days,
+      })),
+    })
+  ).body.id;
+  await post(`onboarding-paths/${path}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const payload = {
+    ...assignmentPayload(),
+    path_version_id: path,
+    target: { kind: 'branch', ids: [branches[0]] },
+  };
+  const preview = (
+    await post('onboarding-assignments/preview', cookies[0]).send(payload).expect(201)
+  ).body;
+  const newStaff = (
+    await post('memberships', cookies[0])
+      .send({
+        employee_number: 'AFTER_PREVIEW',
+        full_name: 'After preview',
+        branch_id: branches[0],
+        job_id: jobs[0],
+      })
+      .expect(201)
+  ).body.id;
+  const result = (
+    await post(`onboarding-assignments/batches/${preview.id}/commit`, cookies[0])
+      .send({ confirm: true })
+      .expect(201)
+  ).body;
+  assert.equal(result.count, preview.count);
+  assert.equal(
+    Number(
+      (
+        await db.query(
+          'SELECT count(*) AS n FROM onboarding_assignments WHERE batch_id=$1 AND membership_id=$2',
+          [preview.id, newStaff],
+        )
+      ).rows[0].n,
+    ),
+    0,
+  );
+  await post('onboarding-assignments/preview', cookies[0])
+    .send({ ...payload, target: { kind: 'job', ids: [jobs[1]] } })
+    .expect(404);
+  const byJob = (
+    await post('onboarding-assignments/preview', cookies[0])
+      .send({ ...payload, target: { kind: 'job', ids: [jobs[0]] } })
+      .expect(201)
+  ).body;
+  assert.ok(byJob.count >= preview.count);
+});

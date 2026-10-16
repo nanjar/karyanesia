@@ -60,8 +60,8 @@ export function LearningPanel({
   return (
     <section className="learning-panel">
       <div className="alert">
-        Materi teks, tautan video YouTube & kuis teori. Gambar, penugasan onboarding dan penilaian
-        praktik belum tersedia. Lulus teori belum berarti kompeten.
+        Materi teks, tautan video YouTube & kuis teori. Penugasan tersedia pada menu Tugas
+        onboarding. Gambar dan penilaian praktik belum tersedia. Lulus teori belum berarti kompeten.
       </div>
       {notice && (
         <p role="status" className="alert success">

@@ -172,4 +172,12 @@ Sebagai OWNER/ADMIN, buka **Jalur onboarding**. Siapkan dan terbitkan modul di *
 
 Simpan draft lalu tinjau detail sebelum **Terbitkan jalur**. Publikasi akan ditolak jika salah satu modul sudah diarsipkan; buat revisi dan pilih penggantinya. **Revisi ke versi baru** menyalin isi ke editor dan penyimpanan menghasilkan draft baru. **Arsipkan jalur** menyimpan versi lama beserta referensinya. Perubahan editor yang belum disimpan belum dipersistenkan dan hilang jika halaman ditutup.
 
-Tahap ini belum menugaskan staf. Tenggat aktual, pembatasan tugas berdasarkan prasyarat, observasi praktik dan status penyelesaian onboarding belum berjalan. Video setiap modul tetap berupa tautan YouTube saja.
+Penugasan staf dan tenggat aktual tersedia pada menu Tugas onboarding. Pembatasan tugas berdasarkan prasyarat, observasi praktik dan status penyelesaian onboarding belum berjalan. Video setiap modul tetap berupa tautan YouTube saja.
+
+### Menugaskan onboarding
+
+Buka **Tugas onboarding** sebagai OWNER/ADMIN. Pilih versi jalur terbit, tanggal mulai dan jenis target (staf, cabang atau jabatan), lalu pilih target dan **Buat pratinjau**. Periksa seluruh nama staf, cabang, zona waktu dan tanggal mulai. **Konfirmasi** menggunakan data pratinjau yang ditampilkan, bukan perubahan form setelahnya. Untuk mengubah target/tanggal, buat pratinjau baru.
+
+Saat koneksi gagal pada konfirmasi, ulangi pratinjau yang sama. Server mengembalikan hasil batch lama tanpa menggandakan tugas. Hindari membuat batch baru hanya karena respons lambat: batch baru boleh menugaskan staf yang sama lagi. Pratinjau berlaku 24 jam; perubahan cabang, jabatan, status aktif atau zona waktu setelah preview dapat meminta pratinjau baru.
+
+Staf membuka **Tugas onboarding** untuk melihat versi jalur, langkah dan tenggat. H+0 berlangsung sampai akhir tanggal mulai di zona waktu cabang. Label tenggat menggunakan waktu cabang. Lewat tenggat tidak menutup tugas. Admin dapat membatalkan tugas dengan alasan; histori tetap tersedia. Integrasi progres kuis dan penilaian praktik belum berjalan, sehingga tugas belum dapat berubah menjadi completed.

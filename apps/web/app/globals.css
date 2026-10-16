@@ -1379,3 +1379,19 @@ select:hover {
     gap: 0;
   }
 }
+.assignment-card {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid #dbe3ef;
+  border-radius: 16px;
+  background: #ffffffb3;
+}
+.assignment-card summary {
+  cursor: pointer;
+  min-height: 44px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.learning-editor select[multiple] {
+  min-height: 160px;
+}
