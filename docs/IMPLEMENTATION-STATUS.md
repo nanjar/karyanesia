@@ -38,6 +38,10 @@ FR-03 sampai FR-12: media privat, materi versi, kuis, jalur belajar, assignment,
 
 Backup/restore, beban 200 pengguna, aksesibilitas menyeluruh, peninjauan privasi dan UAT lapangan tetap merupakan gate rilis berikutnya. Docker image belum diverifikasi di lingkungan ini jika Docker tidak tersedia. CI PostgreSQL baru dianggap lulus setelah workflow GitHub selesai.
 
+## Panduan UI
+
+UI fondasi mengikuti [Clean-Glassify](design/CLEAN-GLASSIFY.md), berdasarkan PDF pengguna: mesh pastel, panel kaca susu, aksen biru, serta empat kartu organisasi dengan data aktual. Layout pelatihan, SOP dan supervisi menjadi acuan modul berikutnya.
+
 ## Urutan berikutnya
 
 1. Lengkapi siklus akun dan organisasi, termasuk impor staf serta perubahan scope.

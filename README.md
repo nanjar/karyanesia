@@ -10,6 +10,7 @@ Implementasi dimulai pada milestone fondasi organisasi: autentikasi multi-tenant
 
 - [Panduan instalasi dan development](docs/DEVELOPMENT.md)
 - [Status implementasi dan pekerjaan berikutnya](docs/IMPLEMENTATION-STATUS.md)
+- [Panduan UI Clean-Glassify](docs/design/CLEAN-GLASSIFY.md)
 - [PRD lengkap v0.0.1](docs/PRD-Karyanesia-v0.0.1.md)
 - [PowerPoint investor dan CTO](docs/presentations/Karyanesia-Investor-CTO-v0.0.1.pptx)
 

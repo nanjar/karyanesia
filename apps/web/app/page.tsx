@@ -554,23 +554,29 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
               {tab === 'overview' && (
                 <>
                   <section className="stats" aria-label="Statistik organisasi">
-                    <article>
+                    <article className="stat-blue">
                       <span>Staf aktif</span>
                       <Users size={20} />
                       <strong>{summary?.active_staff ?? 0}</strong>
                       <small>Dalam cakupan akses Anda</small>
                     </article>
-                    <article>
+                    <article className="stat-violet">
                       <span>Menunggu aktivasi</span>
                       <ShieldCheck size={20} />
                       <strong>{summary?.awaiting_activation ?? 0}</strong>
                       <small>Akun belum membuat password</small>
                     </article>
-                    <article>
+                    <article className="stat-mint">
                       <span>Cabang dengan staf</span>
                       <Building2 size={20} />
                       <strong>{summary?.staffed_branches ?? 0}</strong>
                       <small>Memiliki staf aktif</small>
+                    </article>
+                    <article className="stat-amber">
+                      <span>Jabatan terlihat</span>
+                      <BriefcaseBusiness size={20} />
+                      <strong>{jobs.length}</strong>
+                      <small>Dalam daftar akses Anda</small>
                     </article>
                   </section>
                   <section className="overview-grid">
