@@ -1405,3 +1405,9 @@ select:hover {
   font-size: 0.85rem;
   font-weight: 600;
 }
+.sop-panel .primary {
+  background: #15803d;
+}
+.sop-panel .primary:hover {
+  background: #166534;
+}

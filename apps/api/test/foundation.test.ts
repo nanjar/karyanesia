@@ -2297,3 +2297,198 @@ test('future assignment schedules lock library and contextual access while cance
   );
   assert.equal(cancelled.progress.theory_passed, 0);
 });
+
+let sopTemplateId = '',
+  sopNightId = '';
+const sopPayload = () => ({
+  title: 'Pembukaan area kerja',
+  instructions: 'Periksa kondisi awal sebelum melayani pelanggan.',
+  branch_ids: [branches[0]],
+  job_ids: [jobs[0]],
+  shift_label: 'Pagi',
+  start_time: '08:00',
+  due_time: '17:00',
+  due_next_day: false,
+  auto_accept: false,
+  items: [
+    {
+      kind: 'boolean',
+      label: 'Area kerja aman?',
+      required: true,
+      critical: true,
+      issue_required: true,
+      expected: true,
+    },
+    {
+      kind: 'number',
+      label: 'Suhu penyimpanan',
+      required: true,
+      critical: false,
+      issue_required: true,
+      unit: '°C',
+      min: 0,
+      max: 5,
+    },
+    {
+      kind: 'text',
+      label: 'Catatan tambahan',
+      required: false,
+      critical: false,
+      issue_required: false,
+      max_length: 500,
+    },
+  ],
+});
+test('SOP templates validate typed items, critical review policy and tenant targets', async () => {
+  await post('sop-templates', learnerCookie).send(sopPayload()).expect(403);
+  await get('sop-templates', supervisorCookie).expect(403);
+  await post('sop-templates', cookies[0])
+    .send({ ...sopPayload(), tenant_id: tenants[1] })
+    .expect(422);
+  await post('sop-templates', cookies[0])
+    .send({ ...sopPayload(), branch_ids: [branches[1]] })
+    .expect(409);
+  await post('sop-templates', cookies[0])
+    .send({ ...sopPayload(), job_ids: [jobs[1]] })
+    .expect(409);
+  await post('sop-templates', cookies[0])
+    .send({ ...sopPayload(), branch_ids: [branches[0], branches[0].toUpperCase()] })
+    .expect(422);
+  await post('sop-templates', cookies[0])
+    .send({ ...sopPayload(), auto_accept: true })
+    .expect(422);
+  for (const items of [
+    [],
+    [{ kind: 'photo', label: 'Foto area', required: true }],
+    [{ kind: 'boolean', label: 'Kritis opsional', required: false, critical: true }],
+    [{ kind: 'text', label: 'Semua opsional', required: false }],
+    [{ kind: 'number', label: 'Tanpa rentang', unit: '°C', min: null, max: null }],
+    [{ kind: 'number', label: 'Rentang terbalik', unit: '°C', min: 5, max: 1 }],
+    [{ kind: 'number', label: 'Terlalu besar', unit: 'unit', min: 1000000001 }],
+    [{ kind: 'text', label: 'Kendala teks', issue_required: true }],
+    [{ kind: 'text', label: 'Teks kosong', max_length: 0 }],
+  ]) {
+    await post('sop-templates', cookies[0])
+      .send({ ...sopPayload(), items })
+      .expect(422);
+  }
+  assert.equal(Number((await db.query('SELECT count(*) AS n FROM sop_templates')).rows[0].n), 0);
+  sopTemplateId = (await post('sop-templates', cookies[0]).send(sopPayload()).expect(201)).body.id;
+  const detail = (await get('sop-templates/' + sopTemplateId, cookies[0]).expect(200)).body;
+  assert.equal(detail.status, 'draft');
+  assert.equal(detail.version, 1);
+  assert.equal(detail.checksum.length, 64);
+  assert.equal(detail.content.items[0].position, 1);
+  assert.equal(detail.content.items[1].unit, '°C');
+  assert.equal(detail.content.items[2].kind, 'text');
+  assert.equal(detail.content.targets.branches[0].timezone, 'Asia/Jakarta');
+  await get('sop-templates/' + sopTemplateId, cookies[1]).expect(404);
+  await get('sop-templates/' + sopTemplateId, learnerCookie).expect(403);
+  await post(`sop-templates/${sopTemplateId}/publish`, cookies[1])
+    .send({ confirm: true })
+    .expect(409);
+});
+test('SOP shift defaults support crossing midnight and reject invalid daily windows', async () => {
+  for (const window of [
+    { start_time: '24:00', due_time: '06:00', due_next_day: true },
+    { start_time: '08:00', due_time: '08:00', due_next_day: false },
+    { start_time: '22:00', due_time: '06:00', due_next_day: false },
+    { start_time: '08:00', due_time: '09:00', due_next_day: true },
+  ])
+    await post('sop-templates', cookies[0])
+      .send({ ...sopPayload(), ...window })
+      .expect(422);
+  sopNightId = (
+    await post('sop-templates', cookies[0])
+      .send({
+        ...sopPayload(),
+        title: 'Serah terima malam',
+        shift_label: 'Malam',
+        start_time: '22:00',
+        due_time: '06:00',
+        due_next_day: true,
+      })
+      .expect(201)
+  ).body.id;
+  await post(`sop-templates/${sopNightId}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const night = (await get('sop-templates/' + sopNightId, cookies[0])).body;
+  assert.equal(night.content.due_next_day, true);
+  assert.equal(night.content.start_time, '22:00');
+  assert.equal(night.content.due_time, '06:00');
+  const lowRisk = (
+    await post('sop-templates', cookies[0])
+      .send({
+        ...sopPayload(),
+        auto_accept: true,
+        items: [
+          {
+            kind: 'boolean',
+            label: 'Alat tulis tersedia?',
+            required: true,
+            critical: false,
+            expected: true,
+          },
+        ],
+      })
+      .expect(201)
+  ).body.id;
+  await post(`sop-templates/${lowRisk}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  assert.equal((await get('sop-templates/' + lowRisk, cookies[0])).body.content.auto_accept, true);
+});
+test('published SOP versions and target references are immutable while revisions get new versions', async () => {
+  await post(`sop-templates/${sopTemplateId}/publish`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  await assert.rejects(
+    db.query('UPDATE sop_templates SET content=$1 WHERE id=$2', [
+      JSON.stringify({ title: 'tampered' }),
+      sopTemplateId,
+    ]),
+  );
+  await assert.rejects(db.query('DELETE FROM sop_templates WHERE id=$1', [sopTemplateId]));
+  await assert.rejects(
+    db.query('DELETE FROM sop_template_branches WHERE template_version_id=$1', [sopTemplateId]),
+  );
+  await assert.rejects(
+    db.query('DELETE FROM sop_template_jobs WHERE template_version_id=$1', [sopTemplateId]),
+  );
+  const revisions = await Promise.all(
+    [1, 2].map((i) =>
+      post(`sop-templates/${sopTemplateId}/revise`, cookies[0]).send({
+        ...sopPayload(),
+        title: 'Revisi SOP ' + i,
+      }),
+    ),
+  );
+  assert.ok(revisions.every((r) => r.status === 201));
+  assert.deepEqual(revisions.map((r) => r.body.version).sort(), [2, 3]);
+  const original = (await get('sop-templates/' + sopTemplateId, cookies[0])).body;
+  assert.equal(original.content.title, 'Pembukaan area kerja');
+  assert.equal(original.content.items[0].critical, true);
+  const next = (await get('sop-templates/' + revisions[0].body.id, cookies[0])).body;
+  assert.equal(next.status, 'draft');
+  assert.equal(
+    Number(
+      (
+        await db.query(
+          'SELECT count(*) AS n FROM sop_template_branches WHERE template_version_id=$1',
+          [next.id],
+        )
+      ).rows[0].n,
+    ),
+    1,
+  );
+  await post(`sop-templates/${next.id}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  await post(`sop-templates/${sopTemplateId}/archive`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  assert.equal((await get('sop-templates/' + sopTemplateId, cookies[0])).body.status, 'archived');
+  await post(`sop-templates/${sopTemplateId}/publish`, cookies[0])
+    .send({ confirm: true })
+    .expect(409);
+  assert.ok(
+    (await get('audit-events', cookies[0])).body.some(
+      (e: any) => e.action === 'sop_template.published',
+    ),
+  );
+});

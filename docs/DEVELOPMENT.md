@@ -229,3 +229,15 @@ Pustaka tetap menyediakan materi terbit yang belum ditugaskan. Bila versi yang s
 API detail materi menerima query opsional `assignment_id`; body submit kuis menerima field opsional yang sama. Staf hanya dapat memakai konteks tugas sendiri dan versi yang ada pada snapshot tugas itu. Idempotency key tidak dapat dipindahkan antara konteks. Replay hasil yang sudah disimpan tetap tersedia untuk histori walaupun akses baru terkunci, dan tidak membuat percobaan baru. Admin dapat meninjau isi/kunci materi melalui pustaka pengelolaan, sedangkan submit kuis tetap memeriksa akses peserta.
 
 Jatah percobaan/reset dan pemakaian bukti teori tetap per staf/versi modul, dibagi antar tugas. Penugasan baru tidak menghapus atau mengulang nilai yang sudah lulus pada versi yang sama. Pembatasan ini berlaku pada endpoint Karyanesia; video tetap menggunakan tautan YouTube dan mengikuti akses pemilik videonya.
+
+### Menyiapkan template SOP
+
+Sebagai OWNER/ADMIN, buka **Template SOP**. Pilih cabang/jabatan sasaran, isi judul, petunjuk, label shift, waktu mulai dan tenggat lokal. Untuk shift lintas tengah malam, aktifkan **Tenggat pada hari berikutnya**; jendela awal dibatasi lebih dari nol sampai 24 jam. Waktu ini merupakan konfigurasi template; belum menghasilkan jadwal atau instance harian.
+
+Susun 1–30 item ya/tidak, angka atau teks. Untuk ya/tidak, tentukan jawaban yang sesuai SOP. Untuk angka, isi satuan dan minimal satu batas; rentang min/max bersifat inklusif saat pelaksanaan mendatang, dengan nilai konfigurasi -1 miliar sampai 1 miliar. Teks memiliki batas 1–4.000 karakter. Minimal satu item wajib; item kritis selalu wajib dan memerlukan review manusia sehingga mode otomatis tidak diizinkan. Menandai item kritis pada editor menonaktifkan mode otomatis.
+
+Penanda kewajiban kendala tersedia untuk ketidaksesuaian ya/tidak atau angka sebagai konfigurasi; modul kendala belum berjalan. Item teks belum mendukung aturan otomatis tersebut. Foto belum dapat dipilih sebagai tipe item. Jangan menganggap penanda ini sebagai laporan kendala yang sudah dibuat.
+
+Simpan draft lalu tinjau detail sebelum **Terbitkan template**. Revisi selalu menghasilkan draft versi baru dengan referensi cabang/jabatan dan nomor item yang ditentukan server. Arsip menjaga versi lama, bukan menghapusnya. Daftar menampilkan maksimal 100 versi template terbaru, sedangkan pemilih cabang/jabatan mengambil hingga 500 data yang tersedia.
+
+Tahap ini belum membuat jadwal, penerima eksplisit, instance harian, draft jawaban, submit/review atau penerimaan otomatis. Template dan konfigurasi target saja tidak boleh dilaporkan sebagai kepatuhan SOP staf.

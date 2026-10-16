@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { SopTemplatesPanel } from '../components/sop-templates-panel';
 import { PracticeRubricsPanel } from '../components/practice-rubrics-panel';
 import { OnboardingAssignmentsPanel } from '../components/onboarding-assignments-panel';
 import { OnboardingPathsPanel } from '../components/onboarding-paths-panel';
@@ -372,6 +373,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
     learning: 'Materi & kuis teori',
     paths: 'Jalur onboarding',
     rubrics: 'Rubrik praktik',
+    sop: 'Template SOP',
     assignments: 'Tugas onboarding',
   };
   const nav = [
@@ -382,6 +384,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
       ? [
           { id: 'paths', label: 'Jalur onboarding', icon: GraduationCap },
           { id: 'rubrics', label: 'Rubrik praktik', icon: ClipboardCheck },
+          { id: 'sop', label: 'Template SOP', icon: ClipboardCheck },
         ]
       : []),
     {
@@ -436,7 +439,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
           </span>
           <span>
             <ClipboardCheck size={18} />
-            SOP harian
+            Pelaksanaan SOP harian
           </span>
           <small>Pengembangan mengikuti PRD v0.0.1</small>
         </div>
@@ -562,6 +565,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
                   onError={handleError}
                 />
               )}
+              {tab === 'sop' && admin && <SopTemplatesPanel onError={handleError} />}
               {tab === 'rubrics' && admin && <PracticeRubricsPanel onError={handleError} />}
               {tab === 'paths' && admin && <OnboardingPathsPanel onError={handleError} />}
               {tab === 'learning' && (

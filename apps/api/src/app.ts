@@ -10,6 +10,7 @@ import { OnboardingPathsController } from './onboarding-paths';
 import { PracticeRequestsController } from './practice-requests';
 import { PracticeAssessmentsController } from './practice-assessments';
 import { PracticeRubricsController } from './practice-rubrics';
+import { SopTemplatesController } from './sop-templates';
 import { LearningController } from './learning';
 import { StaffImportsController } from './staff-imports';
 import { OriginGuard, SessionGuard } from './security';
@@ -27,6 +28,7 @@ class HealthController {
     OrganizationController,
     StaffImportsController,
     LearningController,
+    SopTemplatesController,
     PracticeRubricsController,
     PracticeAssessmentsController,
     PracticeRequestsController,

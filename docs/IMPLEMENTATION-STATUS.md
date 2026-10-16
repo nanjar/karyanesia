@@ -186,3 +186,16 @@ Belum tersedia: penarikan/edit pengajuan, bukti foto/file, notifikasi, SLA, kome
 - Submit diserialkan lewat lock membership dan membaca assignment di dalam transaksi, sehingga pemeriksaan akses tidak hanya mengandalkan state UI yang bisa usang. Tidak ada perubahan snapshot versi atau hasil penilaian yang sudah disahkan.
 
 Belum selesai: bukti foto/file, notifikasi otomatis, pagination, indikator waktu real-time tanpa refresh, dan pemeriksaan visual/interaksi browser. Kriteria penerimaan lain pada PRD masih perlu dituntaskan. Video tetap hanya tautan YouTube; pembatasan Karyanesia tidak mengubah izin video pada YouTube.
+
+## Milestone 4A: template SOP berversi (sebagian FR-07)
+
+- Menu Template SOP untuk OWNER/ADMIN mendukung draft, publikasi, revisi dan arsip. Template menyimpan judul/petunjuk, target cabang/jabatan, label shift, waktu mulai/tenggat lokal, due_next_day, auto_accept dan 1–30 item bertipe boolean/number/text.
+- Item boolean menyimpan expected; angka menyimpan unit serta batas min/max nullable dengan minimal satu batas dan min≤max; teks menyimpan max_length. Nomor posisi item ditentukan server. Schema strict menolak foto dan field/tipe tidak dikenal.
+- Minimal satu item wajib, critical mengharuskan required. Auto_accept dilarang jika ada item kritis. Issue_required tersedia sebagai konfigurasi untuk boolean/number, ditolak untuk teks karena belum ada aturan ketidaksesuaian otomatis teks. Belum ada eksekusi aturan ini.
+- Target 1–100 cabang dan 1–100 jabatan diverifikasi dalam tenant yang sama; UUID dinormalisasi sebelum pemeriksaan duplikat. Snapshot menyimpan identitas dan zona waktu cabang serta identitas jabatan saat draft dibuat. FK komposit dan referensi append-only menjaga isolasi tenant/histori.
+- Publikasi memeriksa ulang konfigurasi dan ketersediaan target. Konten terbit serta identitas versi immutable di database; revisi concurrent mendapat nomor berbeda melalui lock tenant. Semua mutasi diaudit. Tidak ada hard-delete.
+- Batas implementasi pilot: 30 item, maksimal 100 target per kategori, jendela shift >0 sampai 24 jam, angka -1e9 sampai 1e9, panjang teks sampai 4.000. Batas tersebut bukan ukuran pasar atau target bisnis yang sudah diukur.
+- API: `GET/POST /api/v1/sop-templates`, `GET /:id`, `POST /:id/revise`, `POST /:id/publish`, `POST /:id/archive`. Create/revise memakai `{title,instructions,branch_ids,job_ids,shift_label,start_time,due_time,due_next_day,auto_accept,items}`. Item umum `{label,kind,required,critical,issue_required}`, ditambah expected untuk boolean, unit/min/max untuk number, max_length untuk text. Publish/archive memakai `{confirm:true}`. Maksimal 100 versi terbaru tanpa pagination.
+- Migrasi 011 menambah sop_templates dan referensi cabang/jabatan. UI mengikuti milk-glass dengan aksen SOP hijau dan label kritis merah yang tetap memakai teks.
+
+Belum selesai FR-07/FR-08: jadwal harian/hari tertentu, penerima eksplisit, generation instance idempotent, unassigned/notifikasi, pengisian draft server, submit/review, auto-accept runtime, pengecualian dan pembatalan instance. Foto dan modul kendala juga belum tersedia. Publikasi template tidak menghasilkan tugas atau data kepatuhan staf. Pemeriksaan visual/interaksi browser masih diperlukan. Video tetap hanya tautan YouTube pada materi pelatihan.
