@@ -726,3 +726,47 @@ test('learning videos accept only YouTube HTTPS URLs and persist canonical links
     assert.equal(detail.content.video_url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
   }
 });
+
+test('five-question versions grade all answers and revisions retain video and original keys', async () => {
+  const content = {
+    ...learningContent,
+    video_url: 'https://youtu.be/dQw4w9WgXcQ',
+    questions: Array.from({ length: 5 }, (_, i) => ({
+      prompt: `Soal ${i + 1}`,
+      options: ['A', 'B', 'C', 'D', 'E'],
+      correct: i,
+    })),
+  };
+  await post('learning', cookies[0])
+    .send({ ...content, questions: [...content.questions, content.questions[0]] })
+    .expect(422);
+  await post('learning', cookies[0])
+    .send({ ...content, questions: [{ ...content.questions[0], options: ['A'] }] })
+    .expect(422);
+  const first = (await post('learning', cookies[0]).send(content).expect(201)).body.id;
+  await post(`learning/${first}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const result = (
+    await post(`learning/${first}/attempts`, learnerCookie)
+      .send({ idempotency_key: randomUUID(), answers: [0, 1, 2, 3, 0] })
+      .expect(201)
+  ).body;
+  assert.equal(result.correct, 4);
+  assert.equal(result.score, 80);
+  assert.equal(result.passed, true);
+  const revised = (
+    await post(`learning/${first}/revise`, cookies[0])
+      .send({ ...content, questions: content.questions.map((q) => ({ ...q, correct: 4 })) })
+      .expect(201)
+  ).body.id;
+  const old = (await get('learning/' + first, cookies[0])).body;
+  const next = (await get('learning/' + revised, cookies[0])).body;
+  assert.equal(next.content.video_url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.deepEqual(
+    old.content.questions.map((q: any) => q.correct),
+    [0, 1, 2, 3, 4],
+  );
+  assert.deepEqual(
+    next.content.questions.map((q: any) => q.correct),
+    [4, 4, 4, 4, 4],
+  );
+});

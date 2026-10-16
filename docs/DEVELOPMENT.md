@@ -151,3 +151,11 @@ API:
 - `GET /api/v1/staff-imports/{id}/errors.csv` untuk laporan yang diaudit.
 
 Pratinjau kedaluwarsa setelah 24 jam dan tidak bisa dikonfirmasi. Hasil batch yang sudah committed tetap bisa dibaca/diulang tanpa membuat akun baru. Kedaluwarsa belum berarti penghapusan fisik data: tentukan retensi dan jalankan cleanup metadata sesuai kebijakan perusahaan sebelum produksi. Jangan menyimpan laporan kesalahan di tempat publik.
+
+### Mengelola materi dan kuis
+
+Buka **Materi & kuis** sebagai OWNER/ADMIN. Isi judul, tujuan, transkrip dan tautan YouTube opsional. Tambahkan 1–5 soal dengan 2–5 opsi dan tentukan jawaban benar. **Simpan draft versi baru** menyimpan materi sebelum publikasi. Tinjau draft pada pustaka, lalu pilih **Terbitkan versi ini**.
+
+Untuk memperbaiki materi, pilih versi pada pustaka lalu **Revisi ke versi baru**. Konfirmasi penggantian editor, ubah isi pada editor di bawah dan simpan. Versi sebelumnya beserta percobaan staf tidak berubah. Revisi perlu diterbitkan tersendiri. **Arsipkan versi** menghentikan akses pustaka staf dan submit baru tanpa menghapus histori. Arsip tidak membatalkan hasil yang sudah tersimpan.
+
+Materi yang belum tersimpan hilang jika halaman ditutup. Kegagalan simpan mempertahankan input selama halaman tetap terbuka. Gambar pada soal, jalur onboarding dan observasi praktik belum tersedia; hasil kuis hanya menunjukkan kelulusan teori.

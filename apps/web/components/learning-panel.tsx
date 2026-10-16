@@ -25,7 +25,9 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
     [busy, setBusy] = useState(false),
     [answers, setAnswers] = useState<number[]>([]),
     [notice, setNotice] = useState(''),
-    [key, setKey] = useState('');
+    [key, setKey] = useState(''),
+    [revision, setRevision] = useState<Detail | null>(null),
+    [editorSerial, setEditorSerial] = useState(0);
   async function load() {
     setItems((await api<{ items: typeof items }>('learning')).items);
   }
@@ -39,37 +41,6 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
       setAnswers([]);
       setKey(crypto.randomUUID());
       setNotice('');
-    } catch (e) {
-      onError(e as Error);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function create(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget,
-      d = new FormData(form);
-    setBusy(true);
-    try {
-      const content = {
-        ...(d.get('video_url') ? { video_url: d.get('video_url') } : {}),
-        title: d.get('title'),
-        objective: d.get('objective'),
-        transcript: d.get('transcript'),
-        pass_score: Number(d.get('pass_score')),
-        questions: [
-          {
-            prompt: d.get('prompt'),
-            options: [d.get('option0'), d.get('option1')],
-            correct: Number(d.get('correct')),
-          },
-        ],
-      };
-      const r = await api<{ id: string }>('learning', 'POST', content);
-      await load();
-      await open(r.id);
-      form.reset();
-      setNotice('Draft tersimpan. Tinjau isi sebelum diterbitkan.');
     } catch (e) {
       onError(e as Error);
     } finally {
@@ -98,7 +69,15 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
               key={i.id}
               onClick={() => void open(i.id)}
             >
-              {i.title} · v{i.version} · {i.status === 'draft' ? 'Draft' : 'Terbit'}
+              {i.title} · v{i.version} ·{' '}
+              {
+                (
+                  { draft: 'Draft', published: 'Terbit', archived: 'Diarsipkan' } as Record<
+                    string,
+                    string
+                  >
+                )[i.status]
+              }
             </button>
           ))}
         </section>
@@ -108,6 +87,59 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
               {detail.content.title} · v{detail.version}
             </h2>
             <p>{detail.content.objective}</p>
+            {admin && (
+              <div className="learning-actions">
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        'Muat materi ke editor? Perubahan editor yang belum disimpan akan diganti.',
+                      )
+                    )
+                      return;
+                    setRevision(detail);
+                    setEditorSerial((v) => v + 1);
+                    setNotice(
+                      'Materi dimuat ke editor di bawah. Penyimpanan membuat versi draft baru.',
+                    );
+                  }}
+                >
+                  Revisi ke versi baru
+                </button>
+                {detail.status === 'published' && (
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={async () => {
+                      if (
+                        !window.confirm(
+                          'Arsipkan versi ini? Versi tidak lagi tersedia di pustaka staf. Histori tetap disimpan.',
+                        )
+                      )
+                        return;
+                      setBusy(true);
+                      try {
+                        await api(`learning/${detail.id}/archive`, 'POST', { confirm: true });
+                        await load();
+                        await open(detail.id);
+                        setNotice('Versi diarsipkan. Histori tetap tersimpan.');
+                      } catch (e) {
+                        onError(e as Error);
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Arsipkan versi
+                  </button>
+                )}
+              </div>
+            )}
+            {detail.status === 'archived' && (
+              <p className="alert">Versi ini telah diarsipkan. Pengiriman jawaban ditutup.</p>
+            )}
             {detail.content.video_url && (
               <div className="learning-video">
                 <p>
@@ -154,7 +186,7 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
                   Terbitkan versi ini
                 </button>
               </>
-            ) : (
+            ) : detail.status === 'published' ? (
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
@@ -206,7 +238,7 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
                   Kirim jawaban ({detail.attempts.length}/3)
                 </button>
               </form>
-            )}
+            ) : null}
             <h3>Riwayat teori Anda</h3>
             {detail.attempts.map((a) => (
               <p key={a.id}>
@@ -218,61 +250,249 @@ export function LearningPanel({ admin, onError }: { admin: boolean; onError: (e:
         )}
       </div>
       {admin && (
-        <section className="panel">
-          <h2>Buat draft materi teks</h2>
-          <p>
-            Editor awal mendukung satu soal dengan dua opsi. API mendukung hingga lima soal. Revisi
-            tersedia melalui API dan menghasilkan versi baru.
-          </p>
-          <form className="learning-editor" onSubmit={create}>
-            <label>
-              Tautan video YouTube (opsional)
-              <input
-                name="video_url"
-                type="url"
-                maxLength={2048}
-                placeholder="https://www.youtube.com/watch?v=…"
-              />
-            </label>
-            <label>
-              Judul
-              <input name="title" required maxLength={500} />
-            </label>
-            <label>
-              Tujuan belajar
-              <input name="objective" required maxLength={500} />
-            </label>
-            <label>
-              Materi / transkrip
-              <textarea name="transcript" required maxLength={20000} rows={6} />
-            </label>
-            <label>
-              Batas lulus (%)
-              <input name="pass_score" type="number" min={1} max={100} defaultValue={80} required />
-            </label>
-            <label>
-              Pertanyaan
-              <input name="prompt" required maxLength={500} />
-            </label>
-            <label>
-              Opsi A<input name="option0" required maxLength={500} />
-            </label>
-            <label>
-              Opsi B<input name="option1" required maxLength={500} />
-            </label>
-            <label>
-              Jawaban benar
-              <select name="correct">
-                <option value="0">A</option>
-                <option value="1">B</option>
-              </select>
-            </label>
-            <button className="primary" disabled={busy}>
-              Simpan draft
-            </button>
-          </form>
-        </section>
+        <LearningEditor
+          key={`${revision?.id ?? 'new'}-${editorSerial}`}
+          initial={revision}
+          busy={busy}
+          onCancel={() => setRevision(null)}
+          onSave={async (content) => {
+            setBusy(true);
+            try {
+              const r = await api<{ id: string }>(
+                revision ? `learning/${revision.id}/revise` : 'learning',
+                'POST',
+                content,
+              );
+              await load();
+              await open(r.id);
+              setRevision(null);
+              setEditorSerial((v) => v + 1);
+              setNotice('Draft versi baru tersimpan. Tinjau sebelum diterbitkan.');
+            } catch (e) {
+              onError(e as Error);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
       )}
+    </section>
+  );
+}
+function LearningEditor({
+  initial,
+  busy,
+  onCancel,
+  onSave,
+}: {
+  initial: Detail | null;
+  busy: boolean;
+  onCancel: () => void;
+  onSave: (c: Content) => Promise<void>;
+}) {
+  const empty = (): Content => ({
+    title: '',
+    objective: '',
+    transcript: '',
+    pass_score: 80,
+    questions: [{ prompt: '', options: ['', ''], correct: 0 }],
+  });
+  const [content, setContent] = useState<Content>(() =>
+    initial ? structuredClone(initial.content) : empty(),
+  );
+  const updateQuestion = (index: number, change: Partial<Content['questions'][number]>) =>
+    setContent((c) => ({
+      ...c,
+      questions: c.questions.map((q, i) => (i === index ? { ...q, ...change } : q)),
+    }));
+  return (
+    <section className="panel">
+      <h2>
+        {initial ? `Revisi ${initial.content.title} · v${initial.version}` : 'Buat draft materi'}
+      </h2>
+      <p>
+        Gunakan 1–5 soal dan 2–5 opsi per soal. Revisi selalu membuat versi baru; histori versi
+        sebelumnya tetap tersimpan.
+      </p>
+      <form
+        className="learning-editor"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          await onSave(content);
+        }}
+      >
+        <fieldset disabled={busy}>
+          <label>
+            Tautan video YouTube (opsional)
+            <input
+              type="url"
+              maxLength={2048}
+              value={content.video_url ?? ''}
+              placeholder="https://www.youtube.com/watch?v=…"
+              onChange={(e) =>
+                setContent((c) => {
+                  const { video_url, ...rest } = c;
+                  return e.target.value ? { ...rest, video_url: e.target.value } : rest;
+                })
+              }
+            />
+          </label>
+          <label>
+            Judul
+            <input
+              required
+              maxLength={500}
+              value={content.title}
+              onChange={(e) => setContent((c) => ({ ...c, title: e.target.value }))}
+            />
+          </label>
+          <label>
+            Tujuan belajar
+            <input
+              required
+              maxLength={500}
+              value={content.objective}
+              onChange={(e) => setContent((c) => ({ ...c, objective: e.target.value }))}
+            />
+          </label>
+          <label>
+            Materi / transkrip
+            <textarea
+              required
+              rows={6}
+              maxLength={20000}
+              value={content.transcript}
+              onChange={(e) => setContent((c) => ({ ...c, transcript: e.target.value }))}
+            />
+          </label>
+          <label>
+            Batas lulus (%)
+            <input
+              required
+              type="number"
+              min={1}
+              max={100}
+              value={content.pass_score}
+              onChange={(e) => setContent((c) => ({ ...c, pass_score: Number(e.target.value) }))}
+            />
+          </label>
+          {content.questions.map((q, i) => (
+            <fieldset key={i}>
+              <legend>Soal {i + 1}</legend>
+              <label>
+                Pertanyaan
+                <input
+                  required
+                  maxLength={500}
+                  value={q.prompt}
+                  onChange={(e) => updateQuestion(i, { prompt: e.target.value })}
+                />
+              </label>
+              {q.options.map((option, j) => (
+                <div key={j} className="learning-option-editor">
+                  <label>
+                    Opsi {String.fromCharCode(65 + j)}
+                    <input
+                      required
+                      maxLength={500}
+                      value={option}
+                      onChange={(e) =>
+                        updateQuestion(i, {
+                          options: q.options.map((v, k) => (k === j ? e.target.value : v)),
+                        })
+                      }
+                    />
+                  </label>
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={q.options.length <= 2}
+                    aria-label={`Hapus opsi ${String.fromCharCode(65 + j)} soal ${i + 1}`}
+                    onClick={() =>
+                      updateQuestion(i, {
+                        options: q.options.filter((_, k) => k !== j),
+                        correct:
+                          q.correct === j
+                            ? 0
+                            : (q.correct ?? 0) > j
+                              ? (q.correct ?? 0) - 1
+                              : q.correct,
+                      })
+                    }
+                  >
+                    Hapus opsi
+                  </button>
+                </div>
+              ))}
+              <label>
+                Jawaban benar
+                <select
+                  value={q.correct ?? 0}
+                  onChange={(e) => updateQuestion(i, { correct: Number(e.target.value) })}
+                >
+                  {q.options.map((_, j) => (
+                    <option key={j} value={j}>
+                      Opsi {String.fromCharCode(65 + j)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="learning-actions">
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={q.options.length >= 5}
+                  onClick={() => updateQuestion(i, { options: [...q.options, ''] })}
+                >
+                  Tambah opsi
+                </button>
+                <button
+                  className="text-button"
+                  type="button"
+                  disabled={content.questions.length <= 1}
+                  onClick={() =>
+                    setContent((c) => ({ ...c, questions: c.questions.filter((_, k) => k !== i) }))
+                  }
+                >
+                  Hapus soal {i + 1}
+                </button>
+              </div>
+            </fieldset>
+          ))}
+          <div className="learning-actions">
+            <button
+              className="secondary"
+              type="button"
+              disabled={content.questions.length >= 5}
+              onClick={() =>
+                setContent((c) => ({
+                  ...c,
+                  questions: [...c.questions, { prompt: '', options: ['', ''], correct: 0 }],
+                }))
+              }
+            >
+              Tambah soal ({content.questions.length}/5)
+            </button>
+            <button className="primary" type="submit">
+              Simpan draft versi baru
+            </button>
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => {
+                if (
+                  window.confirm('Kosongkan editor? Perubahan yang belum disimpan akan hilang.')
+                ) {
+                  setContent(empty());
+                  onCancel();
+                }
+              }}
+            >
+              {initial ? 'Batalkan revisi' : 'Kosongkan editor'}
+            </button>
+          </div>
+        </fieldset>
+      </form>
     </section>
   );
 }

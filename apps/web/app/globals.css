@@ -1347,3 +1347,35 @@ select:hover {
     grid-template-columns: 1fr;
   }
 }
+.learning-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0;
+  align-items: center;
+}
+.learning-editor > fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.learning-editor label {
+  margin: 12px 0;
+}
+.learning-option-editor {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.learning-option-editor label {
+  flex: 1;
+  min-width: 0;
+}
+@media (max-width: 480px) {
+  .learning-option-editor {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0;
+  }
+}
