@@ -180,4 +180,12 @@ Buka **Tugas onboarding** sebagai OWNER/ADMIN. Pilih versi jalur terbit, tanggal
 
 Saat koneksi gagal pada konfirmasi, ulangi pratinjau yang sama. Server mengembalikan hasil batch lama tanpa menggandakan tugas. Hindari membuat batch baru hanya karena respons lambat: batch baru boleh menugaskan staf yang sama lagi. Pratinjau berlaku 24 jam; perubahan cabang, jabatan, status aktif atau zona waktu setelah preview dapat meminta pratinjau baru.
 
-Staf membuka **Tugas onboarding** untuk melihat versi jalur, langkah dan tenggat. H+0 berlangsung sampai akhir tanggal mulai di zona waktu cabang. Label tenggat menggunakan waktu cabang. Lewat tenggat tidak menutup tugas. Admin dapat membatalkan tugas dengan alasan; histori tetap tersedia. Integrasi progres kuis dan penilaian praktik belum berjalan, sehingga tugas belum dapat berubah menjadi completed.
+Staf membuka **Tugas onboarding** untuk melihat versi jalur, langkah dan tenggat. H+0 berlangsung sampai akhir tanggal mulai di zona waktu cabang. Label tenggat menggunakan waktu cabang. Lewat tenggat tidak menutup tugas. Admin dapat membatalkan tugas dengan alasan; histori tetap tersedia. Progres teori dihitung otomatis, tetapi penilaian praktik belum berjalan sehingga tugas belum dapat berubah menjadi completed.
+
+### Membaca progres teori pada tugas
+
+Di **Tugas onboarding**, status berubah dari **Ditugaskan** ke **Sedang belajar** setelah ada percobaan pada versi modul yang diminta. Jika seluruh teori lulus, status menjadi **Menunggu penilaian praktik**. Hasil kuis pada versi yang persis sama digunakan kembali, termasuk sebelum tugas dibuat; versi revisi perlu kelulusan tersendiri. Nilai gagal berikutnya tidak menghapus kelulusan yang sudah terbukti pada versi tersebut.
+
+Staf dapat memilih **Buka materi & kuis** dari tugasnya sendiri. Hasil submit memperbarui progres tugas; tombol **Perbarui tugas** memuat perubahan dari sesi/perangkat lain. Jatah tiga percobaan dan reset supervisor tetap berlaku per staf/versi modul, dibagi dengan pustaka belajar, bukan jatah baru pada setiap assignment. Versi yang diarsipkan tidak dapat dibuka; hubungi admin untuk pengganti, sementara bukti lama tetap terlihat.
+
+Prasyarat belum membatasi akses dan praktik belum dapat dinilai. Angka teori lulus tidak boleh dibaca sebagai penyelesaian onboarding. Tugas cancelled tetap dibatalkan dan histori teorinya tidak mencakup kuis sesudah waktu pembatalan. Bukti teori belum memiliki masa kedaluwarsa otomatis; gunakan versi baru jika konten berubah atau perlu diuji ulang.

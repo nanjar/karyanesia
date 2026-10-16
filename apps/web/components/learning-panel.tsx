@@ -23,10 +23,14 @@ export function LearningPanel({
   admin,
   canReset,
   onError,
+  initialVersion,
+  onAssessed,
 }: {
   admin: boolean;
   canReset: boolean;
   onError: (e: Error) => void;
+  initialVersion?: string;
+  onAssessed?: () => Promise<void>;
 }) {
   const [items, setItems] = useState<
       { id: string; title: string; status: string; version: number }[]
@@ -42,8 +46,11 @@ export function LearningPanel({
     setItems((await api<{ items: typeof items }>('learning')).items);
   }
   useEffect(() => {
-    void load().catch(onError);
+    if (!initialVersion) void load().catch(onError);
   }, []);
+  useEffect(() => {
+    if (initialVersion) void open(initialVersion);
+  }, [initialVersion]);
   async function open(id: string) {
     setBusy(true);
     try {
@@ -68,29 +75,31 @@ export function LearningPanel({
           {notice}
         </p>
       )}
-      <div className="learning-columns">
-        <section className="panel">
-          <h2>Pustaka materi</h2>
-          {!items.length && <p>Belum ada materi yang dapat ditampilkan.</p>}
-          {items.map((i) => (
-            <button
-              className="secondary learning-item"
-              disabled={busy}
-              key={i.id}
-              onClick={() => void open(i.id)}
-            >
-              {i.title} · v{i.version} ·{' '}
-              {
-                (
-                  { draft: 'Draft', published: 'Terbit', archived: 'Diarsipkan' } as Record<
-                    string,
-                    string
-                  >
-                )[i.status]
-              }
-            </button>
-          ))}
-        </section>
+      <div className={initialVersion ? 'learning-embedded' : 'learning-columns'}>
+        {!initialVersion && (
+          <section className="panel">
+            <h2>Pustaka materi</h2>
+            {!items.length && <p>Belum ada materi yang dapat ditampilkan.</p>}
+            {items.map((i) => (
+              <button
+                className="secondary learning-item"
+                disabled={busy}
+                key={i.id}
+                onClick={() => void open(i.id)}
+              >
+                {i.title} · v{i.version} ·{' '}
+                {
+                  (
+                    { draft: 'Draft', published: 'Terbit', archived: 'Diarsipkan' } as Record<
+                      string,
+                      string
+                    >
+                  )[i.status]
+                }
+              </button>
+            ))}
+          </section>
+        )}
         {detail && (
           <section className="panel">
             <h2>
@@ -212,6 +221,7 @@ export function LearningPanel({
                     setDetail(await api<Detail>('learning/' + detail.id));
                     setKey(crypto.randomUUID());
                     setAnswers([]);
+                    await onAssessed?.();
                   } catch (e) {
                     onError(e as Error);
                   } finally {

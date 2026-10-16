@@ -548,7 +548,11 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
           ) : (
             <>
               {tab === 'assignments' && (
-                <OnboardingAssignmentsPanel admin={admin} onError={handleError} />
+                <OnboardingAssignmentsPanel
+                  admin={admin}
+                  actorId={actor.id}
+                  onError={handleError}
+                />
               )}
               {tab === 'paths' && admin && <OnboardingPathsPanel onError={handleError} />}
               {tab === 'learning' && (

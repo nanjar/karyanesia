@@ -1,8 +1,24 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api } from '../app/api';
+import { LearningPanel } from './learning-panel';
 type Assignment = {
   id: string;
+  membership_id: string;
+  progress: {
+    theory_passed: number;
+    total: number;
+    practice_passed: number;
+    steps: {
+      position: number;
+      theory_status: string;
+      attempts: number;
+      best_score: number | null;
+      practice_status: string;
+      module_available: boolean;
+      overdue: boolean;
+    }[];
+  };
   full_name: string;
   employee_number: string;
   start_date: string;
@@ -13,6 +29,7 @@ type Assignment = {
     title: string;
     version: number;
     steps: {
+      version_id: string;
       position: number;
       module_title: string;
       prerequisite: number | null;
@@ -35,14 +52,17 @@ type Preview = {
 };
 export function OnboardingAssignmentsPanel({
   admin,
+  actorId,
   onError,
 }: {
   admin: boolean;
+  actorId: string;
   onError: (e: Error) => void;
 }) {
   const [items, setItems] = useState<Assignment[]>([]),
     [busy, setBusy] = useState(false),
-    [notice, setNotice] = useState('');
+    [notice, setNotice] = useState(''),
+    [module, setModule] = useState<string | null>(null);
   async function load() {
     setItems((await api<{ items: Assignment[] }>('onboarding-assignments')).items);
   }
@@ -52,9 +72,9 @@ export function OnboardingAssignmentsPanel({
   return (
     <section className="learning-panel">
       <div className="alert">
-        Penugasan dan tenggat sudah tersimpan. Integrasi progres kuis, pembatasan tugas berdasarkan
-        prasyarat dan observasi praktik belum tersedia. Status tetap ditugaskan sampai integrasi
-        tersebut berjalan; kelulusan teori tidak berarti kompeten.
+        Progres teori dihitung dari hasil kuis pada versi modul yang sama, termasuk hasil sebelum
+        penugasan. Praktik belum dinilai dan pembatasan prasyarat belum aktif; onboarding belum
+        dapat selesai otomatis.
       </div>
       {notice && (
         <p role="status" className="alert success">
@@ -81,26 +101,65 @@ export function OnboardingAssignmentsPanel({
           <details className="assignment-card" key={item.id}>
             <summary>
               {item.snapshot.title} · v{item.snapshot.version} · {item.full_name} (
-              {item.employee_number}) · {item.status === 'cancelled' ? 'Dibatalkan' : 'Ditugaskan'}
+              {item.employee_number}) ·{' '}
+              {
+                (
+                  {
+                    assigned: 'Ditugaskan',
+                    in_progress: 'Sedang belajar',
+                    awaiting_assessment: 'Menunggu penilaian praktik',
+                    cancelled: 'Dibatalkan',
+                  } as Record<string, string>
+                )[item.status]
+              }
             </summary>
             <p>
               Mulai {item.start_date} · {item.timezone}
             </p>
+            <p>
+              Teori lulus {item.progress.theory_passed}/{item.progress.total} · Praktik disetujui{' '}
+              {item.progress.practice_passed}/{item.progress.total}
+            </p>
             {item.cancel_reason && <p>Alasan pembatalan: {item.cancel_reason}</p>}
             <ol>
-              {item.snapshot.steps.map((s) => (
+              {item.snapshot.steps.map((s, i) => (
                 <li key={s.position}>
                   <strong>{s.module_title}</strong>
                   <p>
                     Tenggat sebelum{' '}
                     {new Date(s.due_at).toLocaleString('id-ID', { timeZone: item.timezone })} (
-                    {item.timezone})
-                    {item.status !== 'cancelled' && new Date(s.due_at).getTime() <= Date.now()
-                      ? ' · Lewat tenggat'
-                      : ''}{' '}
-                    · {s.prerequisite ? `Prasyarat langkah ${s.prerequisite}` : 'Tanpa prasyarat'} ·
+                    {item.timezone}){item.progress.steps[i].overdue ? ' · Lewat tenggat' : ''} ·{' '}
+                    {s.prerequisite ? `Prasyarat langkah ${s.prerequisite}` : 'Tanpa prasyarat'} ·
                     Praktik wajib, belum dinilai
                   </p>
+                  <p>
+                    Teori:{' '}
+                    {
+                      (
+                        {
+                          passed: 'Lulus',
+                          needs_review: 'Perlu belajar lagi',
+                          not_started: 'Belum mulai',
+                        } as Record<string, string>
+                      )[item.progress.steps[i].theory_status]
+                    }{' '}
+                    · {item.progress.steps[i].attempts} percobaan
+                    {item.progress.steps[i].best_score !== null
+                      ? ` · Nilai terbaik ${item.progress.steps[i].best_score}%`
+                      : ''}
+                  </p>
+                  {item.membership_id === actorId &&
+                    item.status !== 'cancelled' &&
+                    (item.progress.steps[i].module_available ? (
+                      <button className="secondary" onClick={() => setModule(s.version_id)}>
+                        Buka materi & kuis
+                      </button>
+                    ) : (
+                      <p>
+                        Versi materi telah diarsipkan. Hubungi admin untuk tindak lanjut; bukti
+                        teori lama tetap tersimpan.
+                      </p>
+                    ))}
                 </li>
               ))}
             </ol>
@@ -135,6 +194,21 @@ export function OnboardingAssignmentsPanel({
           </details>
         ))}
       </section>
+      {module && (
+        <section className="panel">
+          <button className="secondary" onClick={() => setModule(null)}>
+            Tutup materi
+          </button>
+          <LearningPanel
+            key={module}
+            admin={false}
+            canReset={false}
+            initialVersion={module}
+            onError={onError}
+            onAssessed={load}
+          />
+        </section>
+      )}
     </section>
   );
 }

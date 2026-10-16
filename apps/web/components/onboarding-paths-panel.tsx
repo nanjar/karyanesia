@@ -68,8 +68,8 @@ export function OnboardingPathsPanel({ onError }: { onError: (e: Error) => void 
     <section className="learning-panel">
       <div className="alert">
         Kelola versi jalur di sini, lalu gunakan menu Tugas onboarding untuk menugaskan staf.
-        Integrasi progres dan observasi praktik belum tersedia. Publikasi jalur saja tidak membuat
-        tugas.
+        Progres teori tersedia pada tugas; observasi praktik belum tersedia. Publikasi jalur saja
+        tidak membuat tugas.
       </div>
       {notice && (
         <p role="status" className="alert success">

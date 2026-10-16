@@ -18,6 +18,7 @@ import { Database, Executor } from './database';
 import { SessionGuard } from './security';
 import { admins, ApiRequest } from './types';
 import { audit } from './audit';
+import { assignmentProgress } from './onboarding-progress';
 const date = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -216,14 +217,13 @@ export class OnboardingAssignmentsController {
   }
   @Get() async list(@Req() req: ApiRequest) {
     const a = req.actor;
-    return {
-      items: (
-        await this.db.query(
-          `SELECT t.*,t.start_date::text AS start_date,u.full_name,m.employee_number FROM onboarding_assignments t JOIN memberships m ON m.tenant_id=t.tenant_id AND m.id=t.membership_id JOIN users u ON u.id=m.user_id WHERE t.tenant_id=$1 AND ($2 OR t.membership_id=$3 OR ($4 AND m.branch_id=ANY($5::uuid[]))) ORDER BY t.created_at DESC,t.id LIMIT 100`,
-          [a.tenant_id, admins(a), a.id, a.role === 'SUPERVISOR', a.scopes],
-        )
-      ).rows,
-    };
+    const rows = (
+      await this.db.query(
+        `SELECT t.*,t.start_date::text AS start_date,u.full_name,m.employee_number FROM onboarding_assignments t JOIN memberships m ON m.tenant_id=t.tenant_id AND m.id=t.membership_id JOIN users u ON u.id=m.user_id WHERE t.tenant_id=$1 AND ($2 OR t.membership_id=$3 OR ($4 AND m.branch_id=ANY($5::uuid[]))) ORDER BY t.created_at DESC,t.id LIMIT 100`,
+        [a.tenant_id, admins(a), a.id, a.role === 'SUPERVISOR', a.scopes],
+      )
+    ).rows;
+    return { items: await assignmentProgress(this.db, a.tenant_id, rows) };
   }
   @Post(':id/cancel') async cancel(
     @Req() req: ApiRequest,

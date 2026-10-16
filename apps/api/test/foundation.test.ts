@@ -1217,3 +1217,128 @@ test('branch preview freezes the target set and job targeting remains tenant sco
   ).body;
   assert.ok(byJob.count >= preview.count);
 });
+
+test('assignment progress reuses exact-version theory evidence and never marks practice complete', async () => {
+  const first = (await post('learning', cookies[0]).send({ ...learningContent, title: 'Teori A' }))
+    .body.id;
+  const second = (await post('learning', cookies[0]).send({ ...learningContent, title: 'Teori B' }))
+    .body.id;
+  for (const id of [first, second])
+    await post(`learning/${id}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  await post(`learning/${first}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [0] })
+    .expect(201);
+  const path = (
+    await post('onboarding-paths', cookies[0]).send({
+      title: 'Progres teori',
+      description: 'Bukti teori immutable',
+      steps: [
+        { version_id: first, due_days: 0 },
+        { version_id: second, due_days: 1 },
+      ],
+    })
+  ).body.id;
+  await post(`onboarding-paths/${path}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const preview = (
+    await post('onboarding-assignments/preview', cookies[0]).send({
+      ...assignmentPayload(),
+      path_version_id: path,
+      start_date: '2020-01-01',
+    })
+  ).body.id;
+  const id = (
+    await post(`onboarding-assignments/batches/${preview}/commit`, cookies[0]).send({
+      confirm: true,
+    })
+  ).body.assignment_ids[0];
+  const read = async () =>
+    (await get('onboarding-assignments', learnerCookie)).body.items.find((a: any) => a.id === id);
+  let item = await read();
+  assert.equal(item.status, 'in_progress');
+  assert.equal(item.progress.theory_passed, 1);
+  assert.equal(item.progress.practice_passed, 0);
+  assert.equal(item.progress.completed_steps, 0);
+  assert.equal(item.progress.overdue, true);
+  assert.equal(item.progress.steps[0].theory_status, 'passed');
+  assert.equal(item.progress.steps[1].theory_status, 'not_started');
+  assert.equal(item.progress.steps[1].best_score, null);
+  await post(`learning/${second}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [0], score: 100, practice_status: 'competent' })
+    .expect(422);
+  await post(`learning/${second}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [1] })
+    .expect(201);
+  item = await read();
+  assert.equal(item.status, 'in_progress');
+  assert.equal(item.progress.steps[1].theory_status, 'needs_review');
+  assert.equal(item.progress.steps[1].best_score, 0);
+  await post(`learning/${second}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [0] })
+    .expect(201);
+  item = await read();
+  assert.equal(item.status, 'awaiting_assessment');
+  assert.equal(item.progress.theory_passed, 2);
+  assert.equal(item.progress.practice_passed, 0);
+  assert.ok(item.progress.steps.every((s: any) => s.practice_status === 'not_assessed'));
+  const supervisor = (await get('onboarding-assignments', supervisorCookie)).body.items.find(
+    (a: any) => a.id === id,
+  );
+  assert.equal(supervisor.progress.theory_passed, 2);
+  assert.ok(
+    !(await get('onboarding-assignments', cookies[1])).body.items.some((a: any) => a.id === id),
+  );
+  // A revision with the same text and answer key is still a different immutable version.
+  const revision = (
+    await post(`learning/${second}/revise`, cookies[0]).send({
+      ...learningContent,
+      title: 'Teori B revisi',
+    })
+  ).body.id;
+  await post(`learning/${revision}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const nextPath = (
+    await post('onboarding-paths', cookies[0]).send({
+      title: 'Revisi perlu teori baru',
+      description: 'Versi berbeda',
+      steps: [{ version_id: revision, due_days: 0 }],
+    })
+  ).body.id;
+  await post(`onboarding-paths/${nextPath}/publish`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  const nextBatch = (
+    await post('onboarding-assignments/preview', cookies[0]).send({
+      ...assignmentPayload(),
+      path_version_id: nextPath,
+    })
+  ).body.id;
+  const nextId = (
+    await post(`onboarding-assignments/batches/${nextBatch}/commit`, cookies[0]).send({
+      confirm: true,
+    })
+  ).body.assignment_ids[0];
+  const next = (await get('onboarding-assignments', learnerCookie)).body.items.find(
+    (a: any) => a.id === nextId,
+  );
+  assert.equal(next.status, 'assigned');
+  assert.equal(next.progress.theory_passed, 0);
+  await post(`learning/${second}/archive`, cookies[0]).send({ confirm: true }).expect(201);
+  item = await read();
+  assert.equal(item.progress.steps[1].module_available, false);
+  assert.equal(item.progress.steps[1].theory_status, 'passed');
+  await post(`onboarding-assignments/${id}/cancel`, cookies[0])
+    .send({ reason: 'Penugasan dihentikan setelah evaluasi' })
+    .expect(201);
+  // Quiz evidence added after cancellation must not rewrite the cancelled task's history.
+  await post(`learning/${first}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [1] })
+    .expect(201);
+  item = await read();
+  assert.equal(item.status, 'cancelled');
+  assert.equal(item.progress.overdue, false);
+  assert.equal(item.progress.steps[0].attempts, 1);
+  assert.equal(item.progress.theory_passed, 2);
+  assert.equal(item.progress.completed_steps, 0);
+  const stored = (await db.query('SELECT status FROM onboarding_assignments WHERE id=$1', [nextId]))
+    .rows[0];
+  assert.equal(stored.status, 'assigned');
+});
