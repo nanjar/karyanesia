@@ -5,6 +5,7 @@ import { Database } from './database';
 import { CONFIG, readConfig } from './config';
 import { AuthController } from './auth';
 import { OrganizationController } from './organization';
+import { OnboardingPathsController } from './onboarding-paths';
 import { LearningController } from './learning';
 import { StaffImportsController } from './staff-imports';
 import { OriginGuard, SessionGuard } from './security';
@@ -22,6 +23,7 @@ class HealthController {
     OrganizationController,
     StaffImportsController,
     LearningController,
+    OnboardingPathsController,
     HealthController,
   ],
   providers: [

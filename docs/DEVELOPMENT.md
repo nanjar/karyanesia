@@ -165,3 +165,11 @@ Materi yang belum tersimpan hilang jika halaman ditutup. Kegagalan simpan memper
 Buka materi terbit sebagai SUPERVISOR, OWNER atau ADMIN. Bagian **Pendampingan staf** menampilkan staf yang gagal tiga kali dan belum lulus. Supervisor hanya melihat cabang dalam scope-nya. Isi **Alasan dan arahan latihan** minimal 10 karakter, lalu pilih **Buka tiga percobaan baru** dan konfirmasi. Gunakan **Perbarui daftar** untuk memuat ulang antrean.
 
 Staf membuka kembali materi dari pustaka untuk memuat jatah terbaru. Rangkaian baru menyediakan tiga percobaan; semua hasil lama dan alasan reset tetap tampil di riwayat. Reset tidak meluluskan teori atau praktik secara otomatis. Video tetap menggunakan tautan YouTube saja.
+
+### Menyusun jalur onboarding
+
+Sebagai OWNER/ADMIN, buka **Jalur onboarding**. Siapkan dan terbitkan modul di **Materi & kuis** terlebih dahulu. Isi judul/deskripsi jalur lalu pilih versi modul untuk langkah pertama. Tambahkan langkah sesuai urutan belajar, isi tenggat H+ dalam hari kalender (H+0 = hari mulai), dan pilih prasyarat dari langkah sebelumnya bila diperlukan. Semua langkah tetap memerlukan observasi praktik.
+
+Simpan draft lalu tinjau detail sebelum **Terbitkan jalur**. Publikasi akan ditolak jika salah satu modul sudah diarsipkan; buat revisi dan pilih penggantinya. **Revisi ke versi baru** menyalin isi ke editor dan penyimpanan menghasilkan draft baru. **Arsipkan jalur** menyimpan versi lama beserta referensinya. Perubahan editor yang belum disimpan belum dipersistenkan dan hilang jika halaman ditutup.
+
+Tahap ini belum menugaskan staf. Tenggat aktual, pembatasan tugas berdasarkan prasyarat, observasi praktik dan status penyelesaian onboarding belum berjalan. Video setiap modul tetap berupa tautan YouTube saja.

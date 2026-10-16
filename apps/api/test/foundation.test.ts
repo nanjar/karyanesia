@@ -871,3 +871,103 @@ test('supervisor resets failed theory within branch scope and preserves all atte
   const audits = (await get('audit-events', cookies[0])).body;
   assert.ok(audits.some((e: any) => e.action === 'learning.attempts_reset'));
 });
+
+let pathId = '',
+  pathSecondModule = '';
+const pathPayload = () => ({
+  title: 'Orientasi kasir',
+  description: 'Tahap dasar orientasi kerja',
+  steps: [
+    { version_id: learningId, due_days: 0, prerequisite: null, practice_required: true },
+    { version_id: pathSecondModule, due_days: 2, prerequisite: 1, practice_required: true },
+  ],
+});
+test('onboarding path drafts validate tenant versions, prerequisite order and required practice', async () => {
+  pathSecondModule = (await post('learning', cookies[0]).send(learningContent)).body.id;
+  await post(`learning/${pathSecondModule}/publish`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  await post('onboarding-paths', learnerCookie).send(pathPayload()).expect(403);
+  await get('onboarding-paths', supervisorCookie).expect(403);
+  const foreign = (await post('learning', cookies[1]).send(learningContent)).body.id;
+  await post(`learning/${foreign}/publish`, cookies[1]).send({ confirm: true }).expect(201);
+  await post('onboarding-paths', cookies[0])
+    .send({ ...pathPayload(), steps: [{ version_id: foreign, due_days: 0 }] })
+    .expect(409);
+  const draft = (await post('learning', cookies[0]).send(learningContent)).body.id;
+  await post('onboarding-paths', cookies[0])
+    .send({ ...pathPayload(), steps: [{ version_id: draft, due_days: 0 }] })
+    .expect(409);
+  for (const steps of [
+    [{ version_id: learningId, due_days: 0, prerequisite: 1 }],
+    [{ version_id: learningId, due_days: 0, practice_required: false }],
+    [
+      { version_id: learningId, due_days: 0 },
+      { version_id: learningId, due_days: 1 },
+    ],
+    [
+      { version_id: learningId, due_days: 3 },
+      { version_id: pathSecondModule, due_days: 1, prerequisite: 1 },
+    ],
+    [],
+  ])
+    await post('onboarding-paths', cookies[0])
+      .send({ ...pathPayload(), steps })
+      .expect(422);
+  pathId = (await post('onboarding-paths', cookies[0]).send(pathPayload()).expect(201)).body.id;
+  const detail = (await get('onboarding-paths/' + pathId, cookies[0]).expect(200)).body;
+  assert.equal(detail.version, 1);
+  assert.equal(detail.status, 'draft');
+  assert.equal(detail.content.steps[0].module_title, learningContent.title);
+  assert.equal(detail.content.steps[0].module_checksum.length, 64);
+  assert.equal('questions' in detail.content.steps[0], false);
+  await get('onboarding-paths/' + pathId, cookies[1]).expect(404);
+  await get('onboarding-paths/' + pathId, learnerCookie).expect(403);
+  await post(`onboarding-paths/${pathId}/publish`, cookies[1]).send({ confirm: true }).expect(409);
+});
+test('published paths and references are immutable and revisions preserve original snapshots', async () => {
+  await post(`onboarding-paths/${pathId}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  await assert.rejects(
+    db.query('UPDATE onboarding_paths SET content=$1 WHERE id=$2', [
+      JSON.stringify({ title: 'tampered' }),
+      pathId,
+    ]),
+  );
+  await assert.rejects(db.query('DELETE FROM onboarding_paths WHERE id=$1', [pathId]));
+  await assert.rejects(db.query('DELETE FROM onboarding_path_modules WHERE path_id=$1', [pathId]));
+  await assert.rejects(
+    db.query(
+      'INSERT INTO onboarding_path_modules(tenant_id,path_id,position,version_id) VALUES($1,$2,3,$3)',
+      [tenants[0], pathId, pathSecondModule],
+    ),
+  );
+  const revised = (
+    await post(`onboarding-paths/${pathId}/revise`, cookies[0])
+      .send({ ...pathPayload(), title: 'Orientasi baru' })
+      .expect(201)
+  ).body;
+  assert.equal(revised.version, 2);
+  assert.equal(
+    (await get('onboarding-paths/' + pathId, cookies[0])).body.content.title,
+    'Orientasi kasir',
+  );
+  assert.equal((await get('onboarding-paths/' + revised.id, cookies[0])).body.status, 'draft');
+  await post(`onboarding-paths/${pathId}/archive`, cookies[0]).send({ confirm: true }).expect(201);
+  assert.equal((await get('onboarding-paths/' + pathId, cookies[0])).body.status, 'archived');
+  await post(`onboarding-paths/${pathId}/publish`, cookies[0]).send({ confirm: true }).expect(409);
+});
+test('path publication revalidates module availability and concurrent revisions get distinct numbers', async () => {
+  const draft = (await post('onboarding-paths', cookies[0]).send(pathPayload()).expect(201)).body
+    .id;
+  const versions = await Promise.all(
+    [1, 2].map(() => post(`onboarding-paths/${draft}/revise`, cookies[0]).send(pathPayload())),
+  );
+  assert.deepEqual(versions.map((r) => r.body.version).sort(), [2, 3]);
+  await post(`learning/${pathSecondModule}/archive`, cookies[0])
+    .send({ confirm: true })
+    .expect(201);
+  await post(`onboarding-paths/${draft}/publish`, cookies[0]).send({ confirm: true }).expect(409);
+  assert.equal((await get('onboarding-paths/' + draft, cookies[0])).body.status, 'draft');
+  const audit = (await get('audit-events', cookies[0])).body;
+  assert.ok(audit.some((e: any) => e.action === 'onboarding_path.published'));
+});

@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { OnboardingPathsPanel } from '../components/onboarding-paths-panel';
 import { LearningPanel } from '../components/learning-panel';
 import { StaffImportPanel } from '../components/staff-import-panel';
 import {
@@ -367,10 +368,12 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
     audit: 'Riwayat aktivitas',
     import: 'Impor staf CSV',
     learning: 'Materi & kuis teori',
+    paths: 'Jalur onboarding',
   };
   const nav = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
     { id: 'learning', label: 'Materi & kuis', icon: GraduationCap },
+    ...(admin ? [{ id: 'paths', label: 'Jalur onboarding', icon: GraduationCap }] : []),
     {
       id: 'staff',
       label: actor.role === 'STAFF' ? 'Profil staf' : 'Organisasi & staf',
@@ -419,7 +422,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
           <span className="nav-heading">TAHAP BERIKUTNYA</span>
           <span>
             <GraduationCap size={18} />
-            Jalur onboarding
+            Penugasan onboarding
           </span>
           <span>
             <ClipboardCheck size={18} />
@@ -541,6 +544,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
             </div>
           ) : (
             <>
+              {tab === 'paths' && admin && <OnboardingPathsPanel onError={handleError} />}
               {tab === 'learning' && (
                 <LearningPanel
                   admin={admin}

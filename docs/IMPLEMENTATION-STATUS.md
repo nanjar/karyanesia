@@ -104,3 +104,14 @@ UI mendukung tambah/hapus soal dan opsi dengan batas API, pilihan kunci jawaban,
 - Reset disimpan append-only dan diaudit. Lock anggota yang sama dengan submit mencegah penambahan jatah ganda pada request serentak. Idempotency key yang sama mengembalikan hasil reset lama, sedangkan payload berbeda ditolak.
 - API: `GET /api/v1/learning/:id/blocked` dan `POST /api/v1/learning/:id/resets` dengan `{membership_id, reason, idempotency_key}`. Detail materi menambahkan `budget` (round/used/remaining) dan `resets`; attempt baru mencatat `round`. Migrasi 004 mempertahankan seluruh attempt lama sebagai rangkaian pertama.
 - Pembukaan ulang hanya untuk versi terbit. Tidak mengubah status onboarding/praktik. Pagination antrean, notifikasi otomatis dan pemeriksaan visual browser belum tersedia.
+
+## Milestone 3B: penyusunan jalur onboarding (sebagian FR-05)
+
+- Menu **Jalur onboarding** tersedia bagi OWNER/ADMIN. Editor menyusun 1–20 langkah berupa versi modul yang sudah terbit dalam tenant yang sama, tenggat relatif 0–365 hari kalender, serta prasyarat opsional berupa nomor langkah sebelumnya.
+- Versi modul yang sama tidak dapat muncul dua kali. Tenggat prasyarat tidak boleh lebih lambat dari langkah yang bergantung padanya. Observasi praktik tetap wajib pada setiap langkah; tidak ada jalur teori saja pada tahap ini.
+- Draft menyimpan snapshot judul, checksum dan ID versi modul. Referensi komposit tenant/versi di database mencegah relasi lintas tenant dan penghapusan modul yang direferensikan. Snapshot jalur tidak memuat kunci kuis.
+- Publikasi memeriksa ulang bahwa seluruh modul masih terbit. Jalur terbit immutable; revisi menghasilkan draft baru dengan nomor versi berurutan, arsip tidak menghapus histori. Semua mutasi diaudit. Modul dikunci selama validasi dan penyimpanan agar publikasi/arsip serentak tidak menghasilkan snapshot dari modul yang sudah tidak tersedia pada saat pemeriksaan.
+- API: `GET/POST /api/v1/onboarding-paths`, `GET /:id`, `POST /:id/revise`, `POST /:id/publish`, `POST /:id/archive`. Body create/revise adalah `{title,description,steps:[{version_id,due_days,prerequisite,practice_required:true}]}`; publish/archive memakai `{confirm:true}`. Daftar dibatasi 100 versi terbaru; pemilih modul mengambil hingga 100 versi materi terbaru dari pustaka.
+- Batas 20 langkah dan 365 hari adalah batas implementasi awal untuk pilot, bukan target bisnis yang sudah tervalidasi.
+
+Belum selesai pada FR-05: preview target staf/cabang/jabatan, assignment beserta snapshot tanggal aktual dan due_at, idempotensi batch, progres/prasyarat akses tugas, pembatalan beralasan dan observasi praktik. Pustaka belajar yang sudah tersedia tetap dapat diakses terpisah dari jalur. Publikasi jalur belum menugaskan staf atau mengubah kompetensi. Tidak ada klaim FR-05 selesai. Pemeriksaan visual/interaksi browser masih diperlukan.
