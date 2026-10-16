@@ -1283,3 +1283,67 @@ select:hover {
     padding: 18px;
   }
 }
+
+.learning-columns {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
+  gap: 24px;
+  margin: 24px 0;
+  align-items: start;
+}
+.learning-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 12px 0;
+  white-space: normal;
+}
+.learning-panel .panel {
+  padding: 24px;
+  border: 1px solid #fff;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 30px #0f172a08;
+}
+.learning-transcript {
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+.learning-editor {
+  display: grid;
+  gap: 16px;
+  max-width: 720px;
+}
+.learning-editor label {
+  display: grid;
+  gap: 8px;
+}
+.learning-editor textarea {
+  font: inherit;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 12px;
+  width: 100%;
+}
+.learning-option {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px;
+}
+.learning-option input {
+  width: 20px;
+  min-height: 20px;
+}
+.learning-panel fieldset {
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  margin: 16px 0;
+  padding: 16px;
+}
+@media (max-width: 800px) {
+  .learning-columns {
+    grid-template-columns: 1fr;
+  }
+}

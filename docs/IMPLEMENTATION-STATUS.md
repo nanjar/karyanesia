@@ -74,3 +74,16 @@ Referensi utama: [PRD v0.0.1](PRD-Karyanesia-v0.0.1.md).
 - Suite lokal menjadi 26 integration tests, termasuk concurrent commit, overlap batch, batas payload dan validasi ulang saat data berubah.
 
 Batas yang masih berlaku: impor diproses dalam transaksi API, belum melalui worker job. Kinerja maksimal 5.000 staf belum diukur sebagai SLA. Preview kedaluwarsa memblokir commit, namun pembersihan fisik metadata/PII masih membutuhkan lifecycle retensi sebelum produksi. Verifikasi visual browser belum selesai.
+
+## Milestone 3A: fondasi materi dan teori (sebagian FR-03/FR-04)
+
+- Menu materi mengikuti Clean Glassify. Admin membuat draft teks dengan tujuan, transkrip, ambang lulus dan satu soal dua opsi. API menerima 1–5 soal dengan 2–5 opsi.
+- Draft hanya terlihat admin. Versi terbit tersedia sebagai pustaka belajar bagi anggota aktif tenant; belum merupakan assignment onboarding. Kunci jawaban hanya diberikan pada akses pengelola, bukan respons staf.
+- API revisi membuat draft versi baru dengan nomor berurutan. Checksum SHA-256 konten, penulis, waktu terbit dan audit disimpan. Trigger database melindungi konten terbit dan histori penilaian dari mutasi/penghapusan.
+- Penilaian teori dihitung server, batas lulus default 80%, maksimum tiga percobaan per versi. Idempotency key disimpan per anggota; replay identik mengembalikan hasil lama, payload berbeda ditolak. Lock anggota menyerialkan submit dan pemeriksaan batas percobaan.
+- API arsip menghentikan akses pustaka/submission baru, sementara histori tetap tersimpan. Replay submission lama tetap tersedia melalui key yang sama.
+- Lulus teori tidak menandai praktik atau onboarding selesai. Hasil eksplisit `practice_status: not_assessed`.
+
+Belum selesai: aset video/gambar privat dan validasi file, signed URL, kompetensi dan jabatan sasaran, editor banyak soal dan revisi/arsip di UI, pembukaan ulang percobaan oleh supervisor, jalur/assignment/snapshot, observasi praktik. Tidak ada klaim durasi video atau kompetensi staf. Daftar pustaka awal dibatasi 100 versi terbaru; pagination belum tersedia. Visual QA browser masih perlu dijalankan sebelum pilot.
+
+API tambahan (memerlukan sesi dan Origin untuk POST): `GET/POST /api/v1/learning`, `GET /api/v1/learning/:id`, `POST .../:id/revise`, `POST .../:id/publish`, `POST .../:id/archive`, `POST .../:id/attempts`. Publikasi/arsip memakai `{ "confirm": true }`; submit memakai UUID `idempotency_key` dan array `answers` berindeks nol. Revisi memakai struktur konten yang sama seperti create. Semua pengelolaan terbatas OWNER/ADMIN pada tahap ini.

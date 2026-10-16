@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { LearningPanel } from '../components/learning-panel';
 import { StaffImportPanel } from '../components/staff-import-panel';
 import {
   ArrowUpRight,
@@ -365,9 +366,11 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
     jobs: 'Jabatan',
     audit: 'Riwayat aktivitas',
     import: 'Impor staf CSV',
+    learning: 'Materi & kuis teori',
   };
   const nav = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
+    { id: 'learning', label: 'Materi & kuis', icon: GraduationCap },
     {
       id: 'staff',
       label: actor.role === 'STAFF' ? 'Profil staf' : 'Organisasi & staf',
@@ -416,7 +419,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
           <span className="nav-heading">TAHAP BERIKUTNYA</span>
           <span>
             <GraduationCap size={18} />
-            Pelatihan & onboarding
+            Jalur onboarding
           </span>
           <span>
             <ClipboardCheck size={18} />
@@ -538,6 +541,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
             </div>
           ) : (
             <>
+              {tab === 'learning' && <LearningPanel admin={admin} onError={handleError} />}
               {tab === 'import' && admin && (
                 <StaffImportPanel onCommitted={load} onError={handleError} />
               )}

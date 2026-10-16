@@ -5,6 +5,7 @@ import { Database } from './database';
 import { CONFIG, readConfig } from './config';
 import { AuthController } from './auth';
 import { OrganizationController } from './organization';
+import { LearningController } from './learning';
 import { StaffImportsController } from './staff-imports';
 import { OriginGuard, SessionGuard } from './security';
 @Controller('health')
@@ -16,7 +17,13 @@ class HealthController {
   }
 }
 @Module({
-  controllers: [AuthController, OrganizationController, StaffImportsController, HealthController],
+  controllers: [
+    AuthController,
+    OrganizationController,
+    StaffImportsController,
+    LearningController,
+    HealthController,
+  ],
   providers: [
     { provide: CONFIG, useFactory: readConfig },
     Database,

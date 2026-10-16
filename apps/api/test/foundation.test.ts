@@ -563,3 +563,140 @@ test('CSV upload supports more than 100 KiB and enforces file and JSON limits', 
     .send({ csv: 'x'.repeat(3 * 1024 * 1024) })
     .expect(413);
 });
+
+let learningId = '',
+  learnerCookie = '';
+const learningContent = {
+  title: 'Pelayanan aman',
+  objective: 'Memahami prosedur awal',
+  transcript: 'Sapa pelanggan dan periksa area kerja.',
+  pass_score: 80,
+  questions: [
+    {
+      prompt: 'Apa langkah pertama?',
+      options: ['Sapa pelanggan', 'Abaikan pelanggan'],
+      correct: 0,
+    },
+  ],
+};
+test('learning drafts are tenant isolated and hidden from staff; publication strips answer keys', async () => {
+  const uid = randomUUID(),
+    mid = randomUUID();
+  await db.query('INSERT INTO users(id,full_name,password_hash) VALUES($1,$2,$3)', [
+    uid,
+    'Peserta uji',
+    await hashPassword(password),
+  ]);
+  await db.query(
+    "INSERT INTO memberships(id,tenant_id,user_id,employee_number,branch_id,job_id,role) VALUES($1,$2,$3,'LEARN1',$4,$5,'STAFF')",
+    [mid, tenants[0], uid, branches[0], jobs[0]],
+  );
+  learnerCookie = cookie(
+    await post('auth/login')
+      .send({ company_code: 'company-0', employee_number: 'LEARN1', password })
+      .expect(200),
+  );
+  await post('learning', learnerCookie).send(learningContent).expect(403);
+  learningId = (await post('learning', cookies[0]).send(learningContent).expect(201)).body.id;
+  await get('learning/' + learningId, cookies[1]).expect(404);
+  await get('learning/' + learningId, learnerCookie).expect(404);
+  assert.equal((await get('learning', learnerCookie)).body.items.length, 0);
+  await post(`learning/${learningId}/publish`, cookies[1]).send({ confirm: true }).expect(409);
+  await post(`learning/${learningId}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const detail = (await get('learning/' + learningId, learnerCookie).expect(200)).body;
+  assert.equal(detail.content.questions[0].correct, undefined);
+  assert.equal(detail.status, 'published');
+  await post('learning', cookies[0])
+    .send({ ...learningContent, questions: [{ ...learningContent.questions[0], correct: 4 }] })
+    .expect(422);
+});
+test('theory grading is server-side, idempotent and limited to three attempts', async () => {
+  const idempotency_key = randomUUID();
+  const r = await post(`learning/${learningId}/attempts`, learnerCookie)
+    .send({ idempotency_key, answers: [0] })
+    .expect(201);
+  assert.equal(r.body.score, 100);
+  assert.equal(r.body.passed, true);
+  assert.equal(r.body.practice_status, 'not_assessed');
+  assert.deepEqual(
+    (
+      await post(`learning/${learningId}/attempts`, learnerCookie)
+        .send({ idempotency_key, answers: [0] })
+        .expect(201)
+    ).body,
+    r.body,
+  );
+  await post(`learning/${learningId}/attempts`, learnerCookie)
+    .send({ idempotency_key, answers: [1] })
+    .expect(409);
+  await post(`learning/${learningId}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [2] })
+    .expect(409);
+  await post(`learning/${learningId}/attempts`, cookies[1])
+    .send({ idempotency_key: randomUUID(), answers: [0] })
+    .expect(404);
+  for (let i = 0; i < 2; i++) {
+    const failed = await post(`learning/${learningId}/attempts`, learnerCookie)
+      .send({ idempotency_key: randomUUID(), answers: [1] })
+      .expect(201);
+    assert.equal(failed.body.score, 0);
+    assert.equal(failed.body.passed, false);
+  }
+  await post(`learning/${learningId}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [0] })
+    .expect(409);
+  assert.equal((await get('learning/' + learningId, learnerCookie)).body.attempts.length, 3);
+  await assert.rejects(
+    db.query('UPDATE learning_attempts SET result=$1 WHERE version_id=$2', [
+      JSON.stringify({ score: 100 }),
+      learningId,
+    ]),
+  );
+});
+test('published content is immutable and revisions preserve original quiz history', async () => {
+  await assert.rejects(
+    db.query('UPDATE learning_versions SET content=$1 WHERE id=$2', [
+      JSON.stringify({ ...learningContent, title: 'Changed' }),
+      learningId,
+    ]),
+  );
+  await assert.rejects(db.query('DELETE FROM learning_versions WHERE id=$1', [learningId]));
+  const next = (
+    await post(`learning/${learningId}/revise`, cookies[0])
+      .send({ ...learningContent, title: 'Versi baru' })
+      .expect(201)
+  ).body.id;
+  const detail = (await get('learning/' + next, cookies[0])).body;
+  assert.equal(detail.version, 2);
+  assert.equal(detail.status, 'draft');
+  assert.equal(
+    (await get('learning/' + learningId, learnerCookie)).body.content.title,
+    learningContent.title,
+  );
+  await get('learning/' + next, learnerCookie).expect(404);
+  await post(`learning/${learningId}/publish`, cookies[0]).send({ confirm: true }).expect(409);
+});
+
+test('concurrent theory submissions preserve the cap and archive preserves replay', async () => {
+  const version = (await post(`learning/${learningId}/revise`, cookies[0]).send(learningContent))
+    .body.id;
+  await post(`learning/${version}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const keys = Array.from({ length: 4 }, () => randomUUID());
+  const results = await Promise.all(
+    keys.map((idempotency_key) =>
+      post(`learning/${version}/attempts`, learnerCookie).send({ idempotency_key, answers: [0] }),
+    ),
+  );
+  assert.deepEqual(results.map((r) => r.status).sort(), [201, 201, 201, 409]);
+  const successful = results.findIndex((r) => r.status === 201);
+  await post(`learning/${version}/archive`, learnerCookie).send({ confirm: true }).expect(403);
+  await post(`learning/${version}/archive`, cookies[0]).send({ confirm: true }).expect(201);
+  await get('learning/' + version, learnerCookie).expect(404);
+  await post(`learning/${version}/attempts`, learnerCookie)
+    .send({ idempotency_key: randomUUID(), answers: [0] })
+    .expect(404);
+  const replay = await post(`learning/${version}/attempts`, learnerCookie)
+    .send({ idempotency_key: keys[successful], answers: [0] })
+    .expect(201);
+  assert.deepEqual(replay.body, results[successful].body);
+});
