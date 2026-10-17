@@ -73,7 +73,7 @@ test('activation, staff navigation and logout remain usable on each viewport', a
       .getByRole('navigation', { name: 'Navigasi utama' })
       .getByRole('button', { name: nav, exact: true })
       .click();
-    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: heading, exact: true, level: 1 })).toBeVisible();
     await accessible(page);
     await noPageOverflow(page);
   }
@@ -95,7 +95,7 @@ test('failed network login shows an error and keyboard retry succeeds', async ({
   await page.keyboard.type(f.password);
   await page.route('**/api/v1/auth/login', (route) => route.abort('failed'));
   await page.locator('input[name="password"]').press('Enter');
-  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.locator('main').getByRole('alert')).toContainText('Periksa koneksi Anda');
   await expect(page.getByRole('heading', { name: 'Masuk ke ruang kerja' })).toBeVisible();
   await page.unroute('**/api/v1/auth/login');
   await page.getByRole('button', { name: 'Masuk', exact: true }).click();
@@ -108,14 +108,20 @@ test('admin MFA login and branch dialog support keyboard and labels', async ({ p
     .getByRole('navigation', { name: 'Navigasi utama' })
     .getByRole('button', { name: 'Cabang', exact: true })
     .click();
-  await expect(page.getByRole('heading', { name: 'Cabang', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Cabang perusahaan', exact: true, level: 1 }),
+  ).toBeVisible();
   await accessible(page);
   await noPageOverflow(page);
   await page.getByRole('button', { name: /Tambah cabang/i }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Kode', { exact: true })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(dialog.locator(':focus')).toHaveCount(1);
   await accessible(page);
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole('button', { name: /Tambah cabang/i })).toBeFocused();
   await page.screenshot({ path: info.outputPath('admin-branches.png'), fullPage: true });
 });

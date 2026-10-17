@@ -5,6 +5,8 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
     cache: 'no-store',
+  }).catch(() => {
+    throw new Error('Tidak dapat terhubung. Periksa koneksi Anda lalu coba lagi.');
   });
   const data = await res
     .json()
