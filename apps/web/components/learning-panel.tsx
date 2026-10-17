@@ -301,6 +301,12 @@ export function LearningPanel({
                 </button>
               </form>
             ) : null}
+            {detail.status === 'published' && detail.budget.remaining === 0 && (
+              <p className="inline-help">
+                Batas tiga percobaan rangkaian ini sudah tercapai. Hasil tetap tersedia pada riwayat
+                teori.
+              </p>
+            )}
             {canReset && detail.status === 'published' && (
               <RetryPanel key={detail.id} versionId={detail.id} onError={onError} />
             )}

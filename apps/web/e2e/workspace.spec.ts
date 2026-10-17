@@ -177,3 +177,44 @@ test('YouTube loads only on demand and blocked requests allow retry with transcr
     'https://www.youtube.com/watch?v=M7lc1UVf-VE',
   );
 });
+
+test('quiz grades answers, enforces three attempts and preserves history after reload', async ({
+  page,
+}, info) => {
+  await login(page, fixture().projects[info.project.name].staff);
+  const openQuiz = async () => {
+    await page
+      .getByRole('navigation', { name: 'Navigasi utama' })
+      .getByRole('button', { name: 'Materi & kuis', exact: true })
+      .click();
+    await page.getByRole('button', { name: /Video Uji Browser/ }).click();
+    await expect(
+      page.getByRole('group', { name: '1. Transkrip tersedia?', exact: true }),
+    ).toBeVisible();
+  };
+  await openQuiz();
+  await accessible(page);
+  await noPageOverflow(page);
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await page.getByRole('radio', { name: attempt === 3 ? 'Ya' : 'Tidak', exact: true }).check();
+    await page.getByRole('button', { name: /Kirim jawaban/ }).click();
+    await expect(
+      page.getByText(new RegExp('^Nilai ' + (attempt === 3 ? '100\\.0' : '0\\.0') + '% — ')),
+    ).toBeVisible();
+    await expect(
+      page.getByText(new RegExp('^Rangkaian 1 · percobaan ' + attempt + ':')),
+    ).toBeVisible();
+    await expect(page.getByRole('radio', { name: 'Ya', exact: true })).not.toBeChecked();
+    await expect(page.getByRole('radio', { name: 'Tidak', exact: true })).not.toBeChecked();
+  }
+  await expect(page.getByRole('button', { name: /Kirim jawaban \(3\/3/ })).toBeDisabled();
+  await expect(page.getByText(/Batas tiga percobaan rangkaian ini sudah tercapai/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: /Selamat datang/ })).toBeVisible();
+  await openQuiz();
+  await expect(page.getByRole('button', { name: /Kirim jawaban \(3\/3/ })).toBeDisabled();
+  await expect(page.getByText(/^Rangkaian 1 · percobaan \d:/)).toHaveCount(3);
+  await expect(
+    page.getByText('Rangkaian 1 · percobaan 3: 100.0% · Lulus teori', { exact: true }),
+  ).toBeVisible();
+});

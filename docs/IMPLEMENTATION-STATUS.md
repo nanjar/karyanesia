@@ -284,3 +284,8 @@ CI [fbcf310](https://github.com/nanjar/karyanesia/actions/runs/38924738293) lulu
 - Loader YouTube mempunyai batas tunggu 15 detik, pembersihan skrip gagal dan tombol coba lagi. Transkrip serta tautan YouTube tetap tersedia. Respons penyimpanan dari player yang sudah ditutup tidak dapat mengubah revision konteks baru.
 - Suite browser diperluas menjadi 12 skenario dengan materi sintetis: tidak menghubungi YouTube sebelum klik, kegagalan skrip, retry dan API yang tidak pernah siap. Semua permintaan YouTube pada skenario ini diintersep, tanpa mengunduh video. Ini bukan bukti pemutaran konten YouTube nyata pada perangkat pilot.
 - Bukti baseline sebelumnya: CI d88f8f5 (run 38999608467) lulus 79 integration tests dan sembilan skenario browser, termasuk axe, viewport, MFA dan fokus dialog.
+
+### 6G — Alur kuis melalui browser
+
+- Pesan batas percobaan menjelaskan mengapa tombol kirim dinonaktifkan; histori tetap tersedia.
+- Suite menjadi 15 skenario pada tiga konfigurasi browser, menambah pengiriman jawaban salah/benar, grading server, reset pilihan setelah submit, batas tiga percobaan dan persistensi riwayat setelah reload. Axe dan overflow juga diperiksa pada formulir kuis. Tidak ada klaim bahwa kelulusan teori menggantikan praktik.
