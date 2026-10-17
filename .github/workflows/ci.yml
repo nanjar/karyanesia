@@ -28,6 +28,7 @@ jobs:
       - run: npm ci
       - run: npm run format:check
       - run: npm run typecheck
+      - run: npm run test:ops
       - run: npm test
         env:
           TEST_DATABASE_URL: postgresql://karyanesia:ci-ephemeral-password@localhost:5432/karyanesia_test

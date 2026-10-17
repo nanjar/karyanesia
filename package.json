@@ -17,7 +17,9 @@
     "db:migrate": "npm run db:migrate -w @karyanesia/api",
     "bootstrap": "npm run bootstrap -w @karyanesia/api",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "preflight": "node scripts/preflight.mjs",
+    "test:ops": "node --test scripts/preflight.test.mjs"
   },
   "devDependencies": {
     "prettier": "^3.9.10"

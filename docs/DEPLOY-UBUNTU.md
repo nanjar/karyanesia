@@ -33,6 +33,20 @@ Masukkan POSTGRES_PASSWORD acak hasil `openssl rand -hex 24` dan MFA_ENCRYPTION_
 
 Untuk Docker, URL internal API/database menggunakan nama service dan port container tetap: api:4000 dan postgres:5432. Mengubah port host tidak memerlukan perubahan Dockerfile atau rewrite frontend. DATABASE_URL dan API_INTERNAL_URL pada contoh `.env` hanya dipakai saat proses pengembangan dijalankan langsung di host; sesuaikan ke port host jika menggunakan mode tersebut.
 
+## Pemeriksaan awal opsional dengan Node.js 22.14+
+
+Jika Node.js tersedia di host, jalankan tanpa npm install:
+
+```bash
+node scripts/preflight.mjs --check-ports
+# Untuk konfigurasi produksi:
+node scripts/preflight.mjs --production --check-ports
+```
+
+Preflight memeriksa izin privat .env, secret, origin, mode, proxy hops dan tiga port host yang berbeda. Nilai secret tidak dicetak. Shell environment mengungguli nilai .env; gunakan nilai literal, bukan interpolasi Compose, untuk field yang diperiksa. Port hanya dicoba pada 127.0.0.1 lalu segera dilepas. Tidak ada layanan dihentikan atau database diubah.
+
+Hilangkan --check-ports saat memeriksa konfigurasi instalasi yang sudah berjalan, sebab portnya memang terpakai. Kelulusan bukan reservasi port dan tidak menggantikan docker compose config --quiet, verifikasi TLS, ClamAV, backup atau UAT. Host Docker tanpa Node.js tetap dapat mengikuti langkah Compose di bawah.
+
 ## 2. Build dan jalankan
 
 ```bash

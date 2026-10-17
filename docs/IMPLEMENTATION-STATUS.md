@@ -289,3 +289,8 @@ CI [fbcf310](https://github.com/nanjar/karyanesia/actions/runs/38924738293) lulu
 
 - Pesan batas percobaan menjelaskan mengapa tombol kirim dinonaktifkan; histori tetap tersedia.
 - Suite menjadi 15 skenario pada tiga konfigurasi browser, menambah pengiriman jawaban salah/benar, grading server, reset pilihan setelah submit, batas tiga percobaan dan persistensi riwayat setelah reload. Axe dan overflow juga diperiksa pada formulir kuis. Tidak ada klaim bahwa kelulusan teori menggantikan praktik.
+
+### 6H — Preflight konfigurasi deployment
+
+- Perintah Node.js tanpa dependensi npm memeriksa mode file .env, secret, origin, mode produksi, proxy hops, rentang/duplikasi port dan opsi port loopback yang masih kosong. Output tidak menampilkan nilai secret. Tidak mengubah service atau database.
+- Uji operasional mencakup konfigurasi produksi invalid, redaksi output, precedence shell, izin file, interpolasi Compose dan port yang sedang dipakai. Pemeriksaan ini tidak membuktikan deployment, DNS/TLS, signature ClamAV, alarm maupun backup offsite telah aktif.
