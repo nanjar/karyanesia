@@ -8,6 +8,7 @@ export function PagedMore({
   onPage,
   onError,
   field = 'items',
+  pageSize = 100,
 }: {
   path: string;
   lastId?: string;
@@ -15,6 +16,7 @@ export function PagedMore({
   onPage: (items: any[]) => void;
   onError: (error: Error) => void;
   field?: string;
+  pageSize?: number;
 }) {
   const [busy, setBusy] = useState(false),
     [ended, setEnded] = useState(false);
@@ -32,7 +34,7 @@ export function PagedMore({
           );
           const rows = Array.isArray(result) ? result : result[field];
           onPage(rows);
-          if (rows.length < 100) setEnded(true);
+          if (rows.length < pageSize) setEnded(true);
         } catch (error) {
           onError(error as Error);
         } finally {

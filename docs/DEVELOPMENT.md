@@ -273,3 +273,7 @@ Endpoint baru:
 Pagination pustaka versi, jadwal, tugas SOP, onboarding dan notifikasi memakai `after=<id terakhir>` (100 baris); identitas/timestamp cursor divalidasi pada tenant. Matriks memakai after member ID. Daftar anggota memakai kontrak next_cursor sebelumnya. Antrean praktik mempunyai batas 100 tugas pending terlama, bukan semua tugas terbaru.
 
 Worker memakai PostgreSQL durable queue sebagai pengganti usulan Redis/BullMQ; gambar memakai bytea privat sebagai pengganti S3 pada implementasi pilot. Keputusan dan batas kapasitas dicatat pada IMPLEMENTATION-STATUS. Lihat OPERATIONS-RUNBOOK untuk backup/restore, alarm dan go-live.
+
+### Bukti praktik dan lampiran kendala
+
+Terapkan seluruh migrasi hingga 020. `POST /media` juga menerima `purpose=practice` + `assignment_id` untuk penilai yang berwenang, atau `purpose=issue` + `issue_id` untuk pengguna yang dapat mengakses kendala. Referensi bukti `{asset_id,alt}` (maksimal lima) dapat disertakan pada POST penilaian praktik. Histori penilaian mengembalikan evidence; peserta dapat membaca gambar setelah penilaian disahkan. `POST /issues/:id/attachments` menerima `{asset_id,alt}` milik pengunggah yang terikat kendala tersebut; retry referensi sama tidak menggandakan record. Kendala tertutup harus dibuka kembali untuk bukti baru. Semua byte gambar tetap melalui pemeriksaan/normalisasi dan pemindaian privat yang sama.

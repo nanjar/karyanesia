@@ -1,3 +1,4 @@
+import { cursor, beforeCursor } from './pagination';
 import {
   Body,
   Controller,
@@ -274,12 +275,12 @@ export class OrganizationController {
     return { ...rows[0], as_of: new Date().toISOString() };
   }
   @Get('audit-events')
-  async events(@Req() req: ApiRequest) {
+  async events(@Req() req: ApiRequest, @Query('after') after?: string) {
     admin(req.actor);
     return (
       await this.db.query(
-        'SELECT id,action,object_id,created_at,correlation_id FROM audit_events WHERE tenant_id=$1 ORDER BY created_at DESC,id DESC LIMIT 50',
-        [req.actor.tenant_id],
+        `SELECT id,action,object_id,created_at,correlation_id FROM audit_events WHERE tenant_id=$1 ${beforeCursor('audit_events', 2)} ORDER BY created_at DESC,id DESC LIMIT 50`,
+        [req.actor.tenant_id, cursor(after) || null],
       )
     ).rows;
   }

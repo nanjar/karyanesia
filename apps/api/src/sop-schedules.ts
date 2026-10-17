@@ -40,7 +40,7 @@ const schema = z
   .refine(
     (v) =>
       v.end_date >= v.start_date &&
-      Date.parse(v.end_date) - Date.parse(v.start_date) <= 366 * 86400000,
+      Date.parse(v.end_date) - Date.parse(v.start_date) <= 365 * 86400000,
     'Rentang jadwal maksimal 366 hari.',
   );
 @Controller('sop-schedules')
@@ -51,7 +51,7 @@ export class SopSchedulesController {
     if (!admins(req.actor) && req.actor.role !== 'OPERATIONS') throw new ForbiddenException();
     return (
       await this.db.query(
-        `SELECT * FROM sop_schedules WHERE tenant_id=$1 AND ($2 OR branch_id=ANY($3::uuid[])) ${beforeCursor('sop_schedules', 4)} ORDER BY created_at DESC,id DESC LIMIT 100`,
+        `SELECT sop_schedules.*,EXISTS(SELECT 1 FROM schedule_stops x WHERE x.tenant_id=sop_schedules.tenant_id AND x.schedule_id=sop_schedules.id) stopped FROM sop_schedules WHERE tenant_id=$1 AND ($2 OR branch_id=ANY($3::uuid[])) ${beforeCursor('sop_schedules', 4)} ORDER BY created_at DESC,id DESC LIMIT 100`,
         [req.actor.tenant_id, admins(req.actor), req.actor.scopes, cursor(after) || null],
       )
     ).rows;

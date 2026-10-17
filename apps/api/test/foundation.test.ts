@@ -3349,3 +3349,219 @@ test('image scanner requires availability and rejects malware scanner findings',
     }
   }
 });
+
+test('skill verification follows matching practical evidence, expiry and append-only corrections', async () => {
+  const c = (
+    await db.query(
+      "SELECT * FROM competencies WHERE tenant_id=$1 AND content->>'name'='Pelayanan'",
+      [tenants[0]],
+    )
+  ).rows[0];
+  const path = (
+    await post('onboarding-paths', cookies[0])
+      .send({
+        title: 'Bukti keterampilan lengkap',
+        description: 'Observasi kompetensi',
+        steps: [
+          {
+            version_id: c.module_version_id,
+            rubric_version_id: c.rubric_version_id,
+            due_days: 0,
+            prerequisite: null,
+            practice_required: true,
+          },
+        ],
+      })
+      .expect(201)
+  ).body.id;
+  await post(`onboarding-paths/${path}/publish`, cookies[0]).send({ confirm: true }).expect(201);
+  const batch = (
+    await post('onboarding-assignments/preview', cookies[0])
+      .send({ ...assignmentPayload(), path_version_id: path, start_date: '2026-01-01' })
+      .expect(201)
+  ).body.id;
+  const id = (
+    await post(`onboarding-assignments/batches/${batch}/commit`, cookies[0])
+      .send({ confirm: true })
+      .expect(201)
+  ).body.assignment_ids[0];
+  const signed = (
+    await post(`onboarding-assignments/${id}/assessments`, supervisorCookie)
+      .send({
+        step_position: 1,
+        answers: practiceAnswers(true),
+        comment: 'Praktik sudah diperiksa langsung.',
+        idempotency_key: randomUUID(),
+      })
+      .expect(201)
+  ).body;
+  const skills = () => get('competencies/matrix', learnerCookie);
+  let skill = (await skills()).body.members[0].skills.find((s: any) => s.id === c.id);
+  assert.equal(skill.status, 'verified');
+  assert.equal(skill.assessment_id, signed.id);
+  assert.ok(skill.expires_at);
+  const { skillsFor } = await import('../src/competencies');
+  const actual = Date.now;
+  try {
+    Date.now = () => actual() + 31 * 86400000;
+    skill = (await skillsFor(db, tenants[0], assignmentLearner)).find((s) => s.id === c.id);
+    assert.equal(skill?.status, 'expired');
+  } finally {
+    Date.now = actual;
+  }
+  await post(`onboarding-assignments/${id}/assessments`, supervisorCookie)
+    .send({
+      step_position: 1,
+      answers: practiceAnswers(false),
+      comment: 'Ditemukan kebutuhan latihan tambahan.',
+      training_instructions: 'Latih kembali prosedur dengan pendamping.',
+      supersedes: signed.id,
+      correction_reason: 'Hasil observasi terbaru memerlukan koreksi.',
+      idempotency_key: randomUUID(),
+    })
+    .expect(201);
+  assert.equal(
+    (await skills()).body.members[0].skills.find((s: any) => s.id === c.id).status,
+    'theory_passed',
+  );
+  assert.equal(
+    Number(
+      (await db.query('SELECT count(*) n FROM practice_assessments WHERE assignment_id=$1', [id]))
+        .rows[0].n,
+    ),
+    2,
+  );
+});
+test('issue creation retries deduplicate and assigned staff can access the action history', async () => {
+  const input = {
+    branch_id: branches[0],
+    category: 'Peralatan',
+    description: 'Perlu pemeriksaan peralatan kerja.',
+    priority: 'high',
+    idempotency_key: randomUUID(),
+  };
+  const results = await Promise.all([1, 2].map(() => post('issues', learnerCookie).send(input)));
+  assert.ok(results.every((r) => r.status === 201));
+  assert.equal(results[0].body.id, results[1].body.id);
+  await post('issues', learnerCookie)
+    .send({ ...input, description: 'Isi berbeda dengan kunci sama.' })
+    .expect(409);
+  const id = results[0].body.id;
+  await post(`issues/${id}/transitions`, supervisorCookie)
+    .send({
+      key: randomUUID(),
+      revision: 0,
+      status: 'assigned',
+      note: 'Mohon lakukan pemeriksaan awal.',
+      owner_id: assignmentLearner,
+      due_at: '2026-12-01T00:00:00Z',
+    })
+    .expect(201);
+  await post(`issues/${id}/transitions`, learnerCookie)
+    .send({
+      key: randomUUID(),
+      revision: 1,
+      status: 'in_progress',
+      note: 'Mulai pemeriksaan awal peralatan.',
+      owner_id: members[1],
+    })
+    .expect(409);
+  assert.equal((await get(`issues/${id}`, learnerCookie).expect(200)).body.history.length, 1);
+  await get(`issues/${id}`, cookies[1]).expect(404);
+});
+
+test('practical evidence stays private until signed and cannot cross assignment or tenant', async () => {
+  const task = (
+    await db.query(
+      'SELECT assignment_id,id,step_position FROM practice_assessments WHERE tenant_id=$1 AND membership_id=$2 ORDER BY created_at DESC,sequence DESC LIMIT 1',
+      [tenants[0], assignmentLearner],
+    )
+  ).rows[0];
+  const sharp = (await import('sharp')).default;
+  const bytes = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#224488' } })
+    .png()
+    .toBuffer();
+  const payload = {
+    purpose: 'practice',
+    assignment_id: task.assignment_id,
+    mime: 'image/png',
+    base64: bytes.toString('base64'),
+  };
+  await post('media', learnerCookie).send(payload).expect(403);
+  await post('media', cookies[1]).send(payload).expect(403);
+  const image = (await post('media', supervisorCookie).send(payload).expect(201)).body.id;
+  await post(`media/${image}/url`, learnerCookie).send({ confirm: true }).expect(404);
+  await post(`onboarding-assignments/${task.assignment_id}/assessments`, supervisorCookie)
+    .send({
+      step_position: task.step_position,
+      answers: practiceAnswers(true),
+      comment: 'Bukti praktik diperiksa secara langsung.',
+      supersedes: task.id,
+      correction_reason: 'Observasi ulang disertai bukti terbaru.',
+      idempotency_key: randomUUID(),
+      evidence: [{ asset_id: image, alt: 'Area praktik tanpa identitas pribadi' }],
+    })
+    .expect(201);
+  const history = (
+    await get(`onboarding-assignments/${task.assignment_id}/assessments`, learnerCookie).expect(200)
+  ).body.items;
+  assert.ok(history.some((p: any) => p.evidence.some((e: any) => e.asset_id === image)));
+  await post(`media/${image}/url`, learnerCookie).send({ confirm: true }).expect(201);
+  await post(`media/${image}/url`, cookies[1]).send({ confirm: true }).expect(404);
+});
+test('issue attachments preserve immutable references and deduplicate retries', async () => {
+  const issue = (
+    await post('issues', learnerCookie)
+      .send({
+        branch_id: branches[0],
+        category: 'Bukti',
+        description: 'Dokumentasi kendala tanpa data pribadi.',
+        priority: 'normal',
+        idempotency_key: randomUUID(),
+      })
+      .expect(201)
+  ).body.id;
+  const sharp = (await import('sharp')).default;
+  const bytes = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#448822' } })
+    .png()
+    .toBuffer();
+  const image = (
+    await post('media', learnerCookie)
+      .send({
+        purpose: 'issue',
+        issue_id: issue,
+        mime: 'image/png',
+        base64: bytes.toString('base64'),
+      })
+      .expect(201)
+  ).body.id;
+  const payload = { asset_id: image, alt: 'Kondisi peralatan kerja' };
+  await post(`issues/${issue}/attachments`, cookies[1]).send(payload).expect(404);
+  await post(`issues/${issue}/attachments`, learnerCookie).send(payload).expect(201);
+  await post(`issues/${issue}/attachments`, learnerCookie).send(payload).expect(201);
+  const detail = (await get(`issues/${issue}`, supervisorCookie).expect(200)).body;
+  assert.equal(detail.attachments.length, 1);
+  assert.equal(detail.attachments[0].asset_id, image);
+  await assert.rejects(db.query('DELETE FROM issue_attachments WHERE issue_id=$1', [issue]));
+});
+test('tenant administrators cannot reset an identity shared with another tenant', async () => {
+  const person = (
+    await db.query("SELECT * FROM memberships WHERE tenant_id=$1 AND employee_number='HRTEST'", [
+      tenants[0],
+    ])
+  ).rows[0];
+  const before = (await db.query('SELECT password_hash FROM users WHERE id=$1', [person.user_id]))
+    .rows[0].password_hash;
+  await db.query(
+    "INSERT INTO memberships(id,tenant_id,user_id,employee_number,branch_id,job_id,role) VALUES($1,$2,$3,'SHARED',$4,$5,'STAFF')",
+    [randomUUID(), tenants[1], person.user_id, branches[1], jobs[1]],
+  );
+  await post(`memberships/${person.id}/reset`, cookies[0])
+    .send({ reason: 'Permintaan pemulihan identitas bersama.' })
+    .expect(409);
+  assert.equal(
+    (await db.query('SELECT password_hash FROM users WHERE id=$1', [person.user_id])).rows[0]
+      .password_hash,
+    before,
+  );
+});

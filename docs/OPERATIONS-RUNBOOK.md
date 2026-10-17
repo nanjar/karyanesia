@@ -35,3 +35,9 @@ CI `scripts/restore-smoke.mjs` memakai container PostgreSQL 16 dan database sint
 Cadangkan sebelum migrasi. Rollback aplikasi memakai image sebelumnya; jangan menghapus migrasi yang sudah diterapkan. Migrasi baru menambah tabel/kolom, tetapi penulisan schema baru perlu diperiksa kompatibilitas sebelum downgrade. Gunakan restore teruji jika rollback data diperlukan.
 
 Go-live memerlukan bukti UAT, audit browser/aksesibilitas, load test, konten disetujui, TLS, monitoring aktif, backup offsite dan restore pada lingkungan tujuan. Lihat `IMPLEMENTATION-STATUS.md` untuk gap yang masih terbuka; jangan mengumumkan 100% hanya dari build/CI hijau.
+
+## Reverse proxy dan alamat IP
+
+API dipublikasikan hanya pada loopback host; jangan membuka port API langsung ke internet. `TRUST_PROXY_HOPS=0` merupakan default aman. Di produksi, proxy terdepan wajib menimpa (bukan mempercayai) header X-Forwarded-For dari klien, misalnya Nginx `proxy_set_header X-Forwarded-For $remote_addr;`, kemudian konfigurasi jumlah hop tepercaya sesuai rantai proxy dan verifikasi IP yang terbaca pada aplikasi. Ini diperlukan agar rate limit per-IP tidak mengelompokkan seluruh staf ke IP proxy. Rate limit per-akun tetap berlaku; jangan menyalakan trust proxy pada API yang dapat dilewati klien secara langsung.
+
+Stream notifikasi mempunyai backoff/dead-letter sendiri setelah lima kegagalan dan terlihat pada operations-health. Pemulihan stream global dilakukan operator platform tepercaya setelah penyebab diperbaiki (`UPDATE worker_streams SET attempts=0,failed=false,next_attempt_at=now() WHERE name='notifications'` pada koneksi administrasi), bukan melalui izin pemilik satu tenant. Alarm harus memeriksa flag stream failed selain job failed dan heartbeat.

@@ -268,7 +268,17 @@ export class IssuesController {
       !(['HR', 'OPERATIONS', 'SUPERVISOR'].includes(a.role) && a.scopes.includes(row.branch_id))
     )
       throw new NotFoundException();
-    return { ...row, state, history };
+    return {
+      ...row,
+      state,
+      history,
+      attachments: (
+        await this.db.query(
+          'SELECT asset_id,alt,created_at FROM issue_attachments WHERE tenant_id=$1 AND issue_id=$2 ORDER BY created_at',
+          [a.tenant_id, id],
+        )
+      ).rows,
+    };
   }
   @Post() async create(@Req() req: ApiRequest, @Body() body: unknown) {
     const a = req.actor,
@@ -327,6 +337,80 @@ export class IssuesController {
       );
       await audit(db, a, req.correlationId, 'issue.created', id, { priority: input.priority });
       return { id };
+    });
+  }
+  @Post(':id/attachments') async attach(
+    @Req() req: ApiRequest,
+    @Param('id') raw: string,
+    @Body() body: unknown,
+  ) {
+    const id = z.uuid().parse(raw),
+      a = req.actor,
+      input = z
+        .strictObject({ asset_id: z.uuid(), alt: z.string().trim().min(1).max(500) })
+        .parse(body);
+    await this.detail(req, id);
+    return this.db.transaction(async (db) => {
+      await db.query('SELECT id FROM issues WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [
+        a.tenant_id,
+        id,
+      ]);
+      const last = (
+        await db.query(
+          'SELECT state FROM issue_events WHERE tenant_id=$1 AND issue_id=$2 ORDER BY revision DESC LIMIT 1',
+          [a.tenant_id, id],
+        )
+      ).rows[0];
+      const issue = (
+        await db.query('SELECT reporter_id,branch_id FROM issues WHERE tenant_id=$1 AND id=$2', [
+          a.tenant_id,
+          id,
+        ])
+      ).rows[0];
+      if (
+        !admins(a) &&
+        issue.reporter_id !== a.id &&
+        last?.state.owner_id !== a.id &&
+        !(['HR', 'OPERATIONS', 'SUPERVISOR'].includes(a.role) && a.scopes.includes(issue.branch_id))
+      )
+        throw new ForbiddenException();
+      if (last?.state.status === 'closed')
+        throw new ConflictException('Buka kembali kendala sebelum menambah bukti.');
+      if (
+        !(
+          await db.query(
+            "SELECT id FROM media_assets WHERE tenant_id=$1 AND id=$2 AND issue_id=$3 AND purpose='issue' AND owner_id=$4",
+            [a.tenant_id, input.asset_id, id, a.id],
+          )
+        ).rows.length
+      )
+        throw new ConflictException('Bukti tidak sesuai kendala.');
+      const old = (
+        await db.query(
+          'SELECT asset_id FROM issue_attachments WHERE tenant_id=$1 AND issue_id=$2 AND asset_id=$3',
+          [a.tenant_id, id, input.asset_id],
+        )
+      ).rows[0];
+      if (old) return old;
+      if (
+        Number(
+          (
+            await db.query(
+              'SELECT count(*) n FROM issue_attachments WHERE tenant_id=$1 AND issue_id=$2',
+              [a.tenant_id, id],
+            )
+          ).rows[0].n,
+        ) >= 5
+      )
+        throw new ConflictException('Maksimal lima lampiran.');
+      await db.query(
+        'INSERT INTO issue_attachments(tenant_id,issue_id,asset_id,alt,actor_id) VALUES($1,$2,$3,$4,$5)',
+        [a.tenant_id, id, input.asset_id, input.alt, a.id],
+      );
+      await audit(db, a, req.correlationId, 'issue.evidence_attached', id, {
+        asset_id: input.asset_id,
+      });
+      return { asset_id: input.asset_id };
     });
   }
   @Post(':id/transitions') async transition(

@@ -1,3 +1,4 @@
+import { cursor, beforeCursor } from './pagination';
 import {
   Body,
   Controller,
@@ -18,6 +19,7 @@ import { Database, Executor } from './database';
 import { ApiRequest, admins } from './types';
 import { SessionGuard } from './security';
 import { audit } from './audit';
+import { assignmentProgress } from './onboarding-progress';
 export async function skillsFor(db: Executor, tenant: string, member: string) {
   const skills = (
     await db.query('SELECT * FROM competencies WHERE tenant_id=$1 ORDER BY created_at,id', [tenant])
@@ -85,11 +87,11 @@ export async function skillsFor(db: Executor, tenant: string, member: string) {
 @UseGuards(SessionGuard)
 export class CompetenciesController {
   constructor(@Inject(Database) private db: Database) {}
-  @Get() async list(@Req() req: ApiRequest) {
+  @Get() async list(@Req() req: ApiRequest, @Query('after') after?: string) {
     return (
       await this.db.query(
-        'SELECT * FROM competencies WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 100',
-        [req.actor.tenant_id],
+        `SELECT * FROM competencies WHERE tenant_id=$1 ${beforeCursor('competencies', 2)} ORDER BY created_at DESC,id DESC LIMIT 100`,
+        [req.actor.tenant_id, cursor(after) || null],
       )
     ).rows;
   }
@@ -143,11 +145,45 @@ export class CompetenciesController {
         [a.tenant_id],
       )
     ).rows;
+    const tasks = await assignmentProgress(
+      this.db,
+      a.tenant_id,
+      (
+        await this.db.query(
+          "SELECT * FROM onboarding_assignments WHERE tenant_id=$1 AND membership_id=ANY($2::uuid[]) AND status<>'cancelled'",
+          [a.tenant_id, members.map((m) => m.id)],
+        )
+      ).rows,
+    );
     return {
       as_of: new Date().toISOString(),
       requirements,
       members: await Promise.all(
-        members.map(async (m) => ({ ...m, skills: await skillsFor(this.db, a.tenant_id, m.id) })),
+        members.map(async (m) => {
+          const skills = await skillsFor(this.db, a.tenant_id, m.id),
+            definition = requirements.find((r) => r.job_id === m.job_id),
+            onboarding = tasks.filter((t) => t.membership_id === m.id);
+          const missing_critical =
+            definition?.requirements
+              .filter(
+                (r: any) =>
+                  r.critical && skills.find((s) => s.id === r.competency_id)?.status !== 'verified',
+              )
+              .map((r: any) => r.competency_id) || [];
+          return {
+            ...m,
+            skills,
+            readiness: {
+              ready:
+                !definition || !onboarding.length
+                  ? null
+                  : onboarding.every((t) => t.status === 'completed') &&
+                    missing_critical.length === 0,
+              missing_critical,
+              onboarding_incomplete: onboarding.filter((t) => t.status !== 'completed').length,
+            },
+          };
+        }),
       ),
     };
   }

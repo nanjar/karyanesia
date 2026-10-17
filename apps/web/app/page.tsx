@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { PagedMore } from '../components/paged-more';
 import { TodayPanel } from '../components/today-panel';
 import { AccessPanel } from '../components/access-panel';
 import { InsightsPanel } from '../components/insights-panel';
@@ -878,7 +879,7 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
                   <div className="section-heading">
                     <div>
                       <h2>Jejak aktivitas organisasi</h2>
-                      <p>50 kejadian terbaru dalam perusahaan Anda.</p>
+                      <p>50 kejadian per halaman dalam perusahaan Anda.</p>
                     </div>
                   </div>
                   <div className="table-wrap">
@@ -906,6 +907,14 @@ function Workspace({ actor, onExit }: { actor: Actor; onExit: () => void }) {
                     </table>
                   </div>
                   {!events.length && <div className="empty">Belum ada aktivitas tercatat.</div>}
+                  <PagedMore
+                    path="audit-events"
+                    lastId={events.at(-1)?.id}
+                    enabled={events.length > 0 && events.length % 50 === 0}
+                    pageSize={50}
+                    onPage={(rows) => setEvents((old) => [...old, ...rows])}
+                    onError={handleError}
+                  />
                 </section>
               )}
             </>

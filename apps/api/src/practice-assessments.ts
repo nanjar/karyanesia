@@ -21,6 +21,10 @@ import { digest } from './crypto';
 import { stepLearningGate } from './learning-access';
 import { assignmentProgress } from './onboarding-progress';
 const schema = z.strictObject({
+  evidence: z
+    .array(z.strictObject({ asset_id: z.uuid(), alt: z.string().trim().min(1).max(500) }))
+    .max(5)
+    .default([]),
   step_position: z.number().int().min(1).max(20),
   answers: z
     .array(z.strictObject({ position: z.number().int().min(1).max(20), passed: z.boolean() }))
@@ -80,7 +84,7 @@ export class PracticeAssessmentsController {
     return {
       items: (
         await this.db.query(
-          `SELECT p.id,p.step_position,p.rubric_version_id,p.sequence,p.supersedes,p.answers,p.comment,p.training_instructions,p.correction_reason,p.outcome,p.request_id,p.created_at,u.full_name AS assessor_name FROM practice_assessments p JOIN memberships m ON m.tenant_id=p.tenant_id AND m.id=p.assessor_id JOIN users u ON u.id=m.user_id WHERE p.tenant_id=$1 AND p.assignment_id=$2 ORDER BY p.created_at DESC,p.sequence DESC,p.id LIMIT 100`,
+          `SELECT p.id,p.step_position,p.rubric_version_id,p.sequence,p.supersedes,p.answers,p.comment,p.training_instructions,p.correction_reason,p.outcome,p.request_id,p.evidence,p.created_at,u.full_name AS assessor_name FROM practice_assessments p JOIN memberships m ON m.tenant_id=p.tenant_id AND m.id=p.assessor_id JOIN users u ON u.id=m.user_id WHERE p.tenant_id=$1 AND p.assignment_id=$2 ORDER BY p.created_at DESC,p.sequence DESC,p.id LIMIT 100`,
           [req.actor.tenant_id, id],
         )
       ).rows,
@@ -95,7 +99,13 @@ export class PracticeAssessmentsController {
     if (!assessors(a)) throw new ForbiddenException('Akses penilai diperlukan.');
     const id = z.uuid().parse(raw),
       input = schema.parse(body),
-      hash = digest(id + ':' + JSON.stringify(input));
+      hash = digest(
+        id +
+          ':' +
+          JSON.stringify(
+            input.evidence.length ? input : (({ evidence, ...legacy }) => legacy)(input),
+          ),
+      );
     return this.db.transaction(async (db) => {
       const task = await scopedPracticeAssignment(db, req, id, true);
       if (task.membership_id === a.id)
@@ -111,6 +121,17 @@ export class PracticeAssessmentsController {
         if (input_hash !== hash)
           throw new ConflictException('Kunci pengiriman digunakan untuk isi lain.');
         return result;
+      }
+      for (const image of input.evidence) {
+        if (
+          !(
+            await db.query(
+              "SELECT id FROM media_assets WHERE tenant_id=$1 AND id=$2 AND assignment_id=$3 AND purpose='practice'",
+              [a.tenant_id, image.asset_id, id],
+            )
+          ).rows.length
+        )
+          throw new ConflictException('Bukti praktik tidak sesuai tugas.');
       }
       if (task.status === 'cancelled') throw new ConflictException('Tugas sudah dibatalkan.');
       if (
@@ -187,7 +208,7 @@ export class PracticeAssessmentsController {
         request_id: pending?.id ?? null,
       };
       await db.query(
-        'INSERT INTO practice_assessments(id,tenant_id,assignment_id,membership_id,assessor_id,step_position,rubric_version_id,sequence,supersedes,answers,comment,training_instructions,correction_reason,outcome,idempotency_key,input_hash,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)',
+        'INSERT INTO practice_assessments(id,tenant_id,assignment_id,membership_id,assessor_id,step_position,rubric_version_id,sequence,supersedes,answers,comment,training_instructions,correction_reason,outcome,idempotency_key,input_hash,request_id,evidence) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)',
         [
           result.id,
           a.tenant_id,
@@ -206,6 +227,7 @@ export class PracticeAssessmentsController {
           input.idempotency_key,
           hash,
           result.request_id,
+          JSON.stringify(input.evidence),
         ],
       );
       await audit(db, a, req.correlationId, 'practice_assessment.signed', result.id, {

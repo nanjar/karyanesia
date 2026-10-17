@@ -7,6 +7,7 @@ const schema = z.object({
   WEB_ORIGIN: z.url(),
   MFA_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'Use 32 random bytes encoded as hex'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(3).default(0),
   CLAMAV_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
   CLAMAV_HOST: z.string().min(1).optional(),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),

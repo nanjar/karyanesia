@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { ImageUpload, PrivateImage, ImageRef } from './private-image';
 import { api } from '../app/api';
 type Row = Record<string, any>;
 const labels: Record<string, string> = {
@@ -28,7 +29,8 @@ export function IssueCard({
   const [note, setNote] = useState(''),
     [owner, setOwner] = useState(''),
     [due, setDue] = useState(''),
-    [history, setHistory] = useState<Row[] | null>(null);
+    [history, setHistory] = useState<Row[] | null>(null),
+    [attachments, setAttachments] = useState<ImageRef[]>([]);
   const reviewer = ['OWNER', 'ADMIN', 'OPERATIONS', 'SUPERVISOR'].includes(actor.role),
     state = issue.state.status;
   const actions: Record<string, string[]> = {
@@ -124,6 +126,7 @@ export function IssueCard({
           try {
             const r = await api<Row>(`issues/${issue.id}`);
             setHistory(r.history);
+            setAttachments(r.attachments);
           } catch (e) {
             onError(e as Error);
           }
@@ -131,6 +134,25 @@ export function IssueCard({
       >
         Lihat histori tindakan
       </button>
+      {attachments.map((image) => (
+        <PrivateImage key={image.asset_id} image={image} />
+      ))}
+      {state !== 'closed' && (
+        <details>
+          <summary>Tambah bukti foto (opsional)</summary>
+          <ImageUpload
+            purpose="issue"
+            issueId={issue.id}
+            onError={onError}
+            onUploaded={(image) => {
+              void onAction(async () => {
+                await api(`issues/${issue.id}/attachments`, 'POST', image);
+                setAttachments((items) => [...items, image]);
+              });
+            }}
+          />
+        </details>
+      )}
       {history && (
         <ol>
           {history.map((h) => (

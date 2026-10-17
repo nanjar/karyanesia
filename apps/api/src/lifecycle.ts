@@ -202,6 +202,17 @@ export class LifecycleController {
         )
       ).rows[0];
       if (!target || (target.role === 'ADMIN' && a.role !== 'OWNER')) throw new NotFoundException();
+      if (
+        (
+          await db.query('SELECT 1 FROM memberships WHERE user_id=$1 AND tenant_id<>$2', [
+            target.user_id,
+            a.tenant_id,
+          ])
+        ).rows.length
+      )
+        throw new ConflictException(
+          'Identitas digunakan pada beberapa perusahaan; pemulihan memerlukan operator identitas.',
+        );
       const value = token();
       await db.query(
         'DELETE FROM sessions WHERE membership_id IN (SELECT id FROM memberships WHERE user_id=$1)',

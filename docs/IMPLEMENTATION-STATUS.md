@@ -235,7 +235,7 @@ Belum selesai FR-07/FR-08: jadwal harian/hari tertentu, penerima eksplisit, gene
 - UAT pengguna/perusahaan pilot, persetujuan konten dan kebijakan data/retensi, admin/supervisor terlatih.
 - Deployment produksi, TLS, backup harian aktif di lokasi terpisah, alarm eksternal serta pengujian pemulihan pada infrastruktur tujuan.
 - Audit visual/browser 360 px, keyboard/screen reader dan Safari iOS; belum tersedia browser lokal pada lingkungan pengembangan ini.
-- Profil beban 10 tenant × 1.000 staf / 200 pengguna, p95 ≤800 ms dan cold-start Android/4G ≤3 detik belum terbukti.
+- Profil beban sintetis CI PostgreSQL (10 tenant × 1.000 staf, 200 pengguna) lulus batas p95 ≤800 ms; pengukuran VPS pilot dan cold-start Android/4G ≤3 detik tetap belum terbukti.
 - Karena gate operasional dan UAT di atas, rilis belum diberi status 100% atau siap produksi.
 
 ### 6B — Penutupan gap aplikasi dan pengujian
@@ -248,3 +248,16 @@ Belum selesai FR-07/FR-08: jadwal harian/hari tertentu, penerima eksplisit, gene
 - Load smoke lokal: 10 tenant × 1.000 staf, 200 request serentak, 80% baca/20% tulis, p95 sekitar 636–639 ms pada PGlite dalam lingkungan pengembangan. CI PostgreSQL menjalankan profil sama dengan assertion p95 ≤800 ms. Ini bukan jaminan kapasitas/latensi VPS atau bukti cold-start Android.
 - Scanner protocol diuji untuk unavailable/OK/FOUND. Signature ClamAV aktual dan kapasitasnya tetap perlu diperiksa pada host deployment.
 - Worker membedakan `execution_source=worker` pada audit pembangkitan; menggunakan admin tenant aktif sebagai identitas eksekusi jadwal yang sudah disetujui. Antrean gagal/pending tidak menghalangi penemuan tanggal jadwal berikutnya.
+
+### Bukti verifikasi penutup
+
+CI [fbcf310](https://github.com/nanjar/karyanesia/actions/runs/38924738293) lulus 74 integration tests, typecheck, format, build, profil 200 pengguna pada PostgreSQL 16 dan logical restore skema/aset/checksum/immutability. Pemeriksaan tambahan lokal menaikkan suite menjadi 76 tes, meliputi verified → expired dan koreksi praktik, deduplikasi kendala serta histori. Kesiapan kerja menggabungkan onboarding dan kompetensi kritis; jika definisi/tugas belum ada, tampilkan belum cukup data. Status go-live tetap mengikuti gate di atas.
+
+### 6C — Bukti opsional dan verifikasi lanjutan (17 Oktober 2026)
+
+- Migrasi 020 menambah bukti gambar praktik serta lampiran kendala, dengan referensi tenant/tugas, batas lima gambar, penyimpanan privat dan histori immutable. Staf hanya mendapat akses bukti praktik setelah disertakan pada observasi yang disahkan. Bukti tidak menggantikan penilaian rubrik.
+- UI menyediakan unggah/tampilan bukti praktik dan kendala; detail kendala menyajikan lampiran dan histori. Retry lampiran tidak menggandakan referensi. Kunci idempotensi observasi tanpa bukti tetap kompatibel dengan histori sebelum fitur bukti.
+- Kesiapan kerja menggabungkan onboarding dan kompetensi kritis. Tanpa definisi/tugas, hasilnya belum cukup data, bukan siap kerja otomatis. Audit dan definisi kompetensi mendapat cursor pagination; jadwal dihentikan ditandai pada daftar.
+- Konfigurasi trust proxy eksplisit (default tidak percaya forwarding header); reset identitas bersama beberapa tenant ditolak agar admin satu perusahaan tidak membatalkan kredensial perusahaan lain.
+- Validasi lokal: 79 integration tests, typecheck, format dan production build lulus. Load smoke PGlite terakhir: p95 573 ms, 10 tenant × 1.000 staf, 200 request serentak (80% baca / 20% tulis). Hasil ini hanya lingkungan pengembangan. CI berikutnya memverifikasi PostgreSQL 16 dan restore ulang.
+- Gate go-live eksternal tetap terbuka: persetujuan konten/kebijakan tenant, UAT pengguna, audit browser/aksesibilitas, konfigurasi server/TLS/monitoring serta backup offsite dan latihan restore pada host tujuan. Lihat RELEASE-CHECKLIST-v0.0.1.md; jangan menyamakan kelulusan CI dengan 100% penerimaan produksi.

@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { ImageUpload, PrivateImage, ImageRef } from './private-image';
 import { api } from '../app/api';
 export type RubricSnapshot = {
   id: string;
@@ -26,7 +27,8 @@ export function PracticeObservation({
   const [answers, setAnswers] = useState<Record<number, boolean>>({}),
     [busy, setBusy] = useState(false),
     [key] = useState(() => crypto.randomUUID()),
-    [message, setMessage] = useState('');
+    [message, setMessage] = useState(''),
+    [evidence, setEvidence] = useState<ImageRef[]>([]);
   const failed = rubric.items.some(
     (i) => (i.required || i.critical) && answers[i.position] === false,
   );
@@ -54,6 +56,7 @@ export function PracticeObservation({
               `onboarding-assignments/${assignmentId}/assessments`,
               'POST',
               {
+                evidence,
                 step_position: position,
                 answers: rubric.items.map((i) => ({
                   position: i.position,
@@ -103,6 +106,18 @@ export function PracticeObservation({
               ))}
             </fieldset>
           ))}
+          <p>Bukti foto opsional; hindari wajah, identitas pribadi dan data pelanggan.</p>
+          {evidence.map((image) => (
+            <PrivateImage key={image.asset_id} image={image} />
+          ))}
+          {evidence.length < 5 && (
+            <ImageUpload
+              purpose="practice"
+              assignmentId={assignmentId}
+              onError={onError}
+              onUploaded={(image) => setEvidence((items) => [...items, image])}
+            />
+          )}
           <label>
             Komentar observasi
             <textarea required name="comment" minLength={10} maxLength={2000} rows={3} />
@@ -137,6 +152,7 @@ export function PracticeObservation({
   );
 }
 type Assessment = {
+  evidence?: ImageRef[];
   id: string;
   step_position: number;
   sequence: number;
@@ -198,6 +214,9 @@ export function PracticeHistory({
               </summary>
               <p>{new Date(item.created_at).toLocaleString('id-ID')}</p>
               <p>{item.comment}</p>
+              {item.evidence?.map((image) => (
+                <PrivateImage key={image.asset_id} image={image} />
+              ))}
               {item.training_instructions && <p>Arahan latihan: {item.training_instructions}</p>}
               {item.correction_reason && <p>Alasan penilaian ulang: {item.correction_reason}</p>}
               <ul>

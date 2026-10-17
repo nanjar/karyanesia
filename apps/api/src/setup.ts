@@ -3,10 +3,15 @@ import cookieParser from 'cookie-parser';
 import { json } from 'express';
 import helmet from 'helmet';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { CONFIG, Config } from './config';
 import { ErrorFilter } from './errors';
 import { requestContext } from './security';
 export function setup(app: INestApplication, openApi = true) {
   app.setGlobalPrefix('api/v1');
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .set('trust proxy', app.get<Config>(CONFIG).TRUST_PROXY_HOPS || false);
   app.use(helmet());
   app.use(cookieParser());
   app.use(requestContext);

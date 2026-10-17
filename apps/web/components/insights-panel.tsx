@@ -139,6 +139,14 @@ export function InsightsPanel({
                 <h3>
                   {m.full_name} · {m.employee_number}
                 </h3>
+                <p>
+                  {m.readiness?.ready === null
+                    ? 'Belum cukup data kesiapan kerja'
+                    : m.readiness?.ready
+                      ? 'Persyaratan kesiapan kerja terpenuhi'
+                      : 'Masih ada persyaratan kesiapan kerja'}{' '}
+                  · {m.readiness?.onboarding_incomplete || 0} onboarding belum selesai
+                </p>
                 {!m.skills.length && <p>Belum ada definisi keterampilan.</p>}
                 {m.skills.map((s: Row) => (
                   <p key={s.id}>

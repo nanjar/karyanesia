@@ -195,10 +195,12 @@ export function SopTemplatesPanel({ onError }: { onError: (e: Error) => void }) 
                   <p>
                     {
                       (
-                        { boolean: 'Ya/tidak', number: 'Angka', text: 'Teks' } as Record<
-                          Kind,
-                          string
-                        >
+                        {
+                          boolean: 'Ya/tidak',
+                          number: 'Angka',
+                          text: 'Teks',
+                          photo: 'Foto',
+                        } as Record<Kind, string>
                       )[i.kind]
                     }{' '}
                     · {i.required ? 'Wajib' : 'Opsional'}{' '}

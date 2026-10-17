@@ -51,6 +51,8 @@ export function AccessPanel({ onError }: { onError: (e: Error) => void }) {
           onChange={(e) => {
             setId(e.target.value);
             setToken('');
+            setEnrollment('');
+            setScope([]);
             setPreview(null);
           }}
         >
@@ -82,6 +84,7 @@ export function AccessPanel({ onError }: { onError: (e: Error) => void }) {
         </p>
       )}
       <form
+        key={'access-' + id}
         onSubmit={(e) => {
           e.preventDefault();
           const d = new FormData(e.currentTarget);
@@ -101,7 +104,10 @@ export function AccessPanel({ onError }: { onError: (e: Error) => void }) {
           <legend>Hak akses</legend>
           <label>
             Peran
-            <select name="role">
+            <select name="role" required defaultValue="">
+              <option value="" disabled>
+                Pilih peran baru
+              </option>
               <option value="STAFF">Staf</option>
               <option value="SUPERVISOR">Supervisor</option>
               <option value="HR">HR & Pelatihan</option>
@@ -135,6 +141,8 @@ export function AccessPanel({ onError }: { onError: (e: Error) => void }) {
         </fieldset>
       </form>
       <form
+        key={'transfer-' + id}
+        onChange={() => setPreview(null)}
         onSubmit={(e) => {
           e.preventDefault();
           const d = new FormData(e.currentTarget);

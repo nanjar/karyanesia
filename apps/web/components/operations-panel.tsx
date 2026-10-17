@@ -237,6 +237,7 @@ export function OperationsPanel({
             >
               <strong>
                 {s.content.template.content.title} · {s.content.branch.name}
+                {s.stopped ? ' · Dihentikan' : ''}
               </strong>
               <p>
                 {s.content.start_date} — {s.content.end_date} · {s.content.timezone}
@@ -471,6 +472,61 @@ export function OperationsPanel({
       </div>
       <section className="panel">
         <h2>Kendala dan tindak lanjut</h2>
+        <details>
+          <summary>Laporkan kendala baru</summary>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const data = new FormData(event.currentTarget);
+              const input = {
+                branch_id: String(data.get('branch_id')),
+                category: String(data.get('category')),
+                description: String(data.get('description')),
+                priority: String(data.get('priority')),
+              };
+              const identity = JSON.stringify(input);
+              const key = issueKeys.current.get(identity) || crypto.randomUUID();
+              issueKeys.current.set(identity, key);
+              void run(async () => {
+                await api('issues', 'POST', { ...input, idempotency_key: key });
+                setNotice(
+                  'Kendala tercatat. Hubungi kontak internal langsung untuk kondisi mendesak.',
+                );
+              });
+            }}
+          >
+            <label>
+              Cabang
+              <select name="branch_id" required>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Kategori
+              <input name="category" required maxLength={100} />
+            </label>
+            <label>
+              Uraian
+              <textarea name="description" required minLength={10} maxLength={2000} />
+            </label>
+            <label>
+              Prioritas
+              <select name="priority" defaultValue="normal">
+                <option value="low">Rendah</option>
+                <option value="normal">Normal</option>
+                <option value="high">Tinggi</option>
+              </select>
+            </label>
+            <button className="primary" disabled={busy}>
+              Kirim laporan kendala
+            </button>
+          </form>
+        </details>
+
         {!issues.length && <p>Belum ada kendala.</p>}
         {issues.map((issue) => (
           <IssueCard

@@ -41,10 +41,14 @@ export function PrivateImage({ image }: { image: ImageRef }) {
 export function ImageUpload({
   purpose = 'learning',
   instanceId,
+  assignmentId,
+  issueId,
   onUploaded,
   onError,
 }: {
-  purpose?: 'learning' | 'evidence';
+  purpose?: 'learning' | 'evidence' | 'practice' | 'issue';
+  assignmentId?: string;
+  issueId?: string;
   instanceId?: string;
   onUploaded: (image: ImageRef) => void;
   onError: (e: Error) => void;
@@ -81,6 +85,8 @@ export function ImageUpload({
               const r = await api<{ id: string }>('media', 'POST', {
                 purpose,
                 instance_id: instanceId,
+                assignment_id: assignmentId,
+                issue_id: issueId,
                 mime: file.type,
                 base64,
               });

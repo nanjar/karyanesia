@@ -21,7 +21,7 @@ import { createConnection } from 'node:net';
 import sharp from 'sharp';
 import { Database, Executor } from './database';
 import { CONFIG, Config } from './config';
-import { ApiRequest, admins } from './types';
+import { ApiRequest, admins, assessors } from './types';
 import { SessionGuard } from './security';
 import { inScope } from './operations';
 import { assertLearningAccess } from './learning-access';
@@ -113,12 +113,38 @@ export class MediaController {
     const a = req.actor,
       row = (
         await this.db.query(
-          'SELECT id,tenant_id,owner_id,purpose,instance_id FROM media_assets WHERE tenant_id=$1 AND id=$2',
+          'SELECT id,tenant_id,owner_id,purpose,instance_id,assignment_id,issue_id FROM media_assets WHERE tenant_id=$1 AND id=$2',
           [a.tenant_id, id],
         )
       ).rows[0];
     if (!row) throw new NotFoundException();
     if (admins(a) || row.owner_id === a.id) return row;
+    if (row.purpose === 'practice') {
+      const task = (
+        await this.db.query(
+          'SELECT t.membership_id,m.branch_id FROM onboarding_assignments t JOIN memberships m ON m.tenant_id=t.tenant_id AND m.id=t.membership_id WHERE t.tenant_id=$1 AND t.id=$2',
+          [a.tenant_id, row.assignment_id],
+        )
+      ).rows[0];
+      if (task) {
+        if (
+          task.membership_id === a.id &&
+          (
+            await this.db.query(
+              'SELECT 1 FROM practice_assessments WHERE tenant_id=$1 AND assignment_id=$2 AND evidence @> $3::jsonb',
+              [a.tenant_id, row.assignment_id, JSON.stringify([{ asset_id: id }])],
+            )
+          ).rows.length
+        )
+          return row;
+        if (assessors(a) && a.scopes.includes(task.branch_id)) return row;
+      }
+      throw new NotFoundException();
+    }
+    if (row.purpose === 'issue') {
+      await this.issueAccess(req, row.issue_id);
+      return row;
+    }
     if (row.purpose === 'evidence') {
       const task = (
         await this.db.query('SELECT * FROM sop_instances WHERE tenant_id=$1 AND id=$2', [
@@ -143,11 +169,31 @@ export class MediaController {
     }
     throw new NotFoundException();
   }
+  private async issueAccess(req: ApiRequest, id: string) {
+    const a = req.actor;
+    const row = (
+      await this.db.query(
+        'SELECT i.*,e.state FROM issues i LEFT JOIN LATERAL(SELECT state FROM issue_events WHERE tenant_id=i.tenant_id AND issue_id=i.id ORDER BY revision DESC LIMIT 1)e ON true WHERE i.tenant_id=$1 AND i.id=$2',
+        [a.tenant_id, id],
+      )
+    ).rows[0];
+    if (
+      !row ||
+      (!admins(a) &&
+        row.reporter_id !== a.id &&
+        row.state?.owner_id !== a.id &&
+        !(['SUPERVISOR', 'OPERATIONS', 'HR'].includes(a.role) && a.scopes.includes(row.branch_id)))
+    )
+      throw new NotFoundException();
+    return row;
+  }
   @Post() async upload(@Req() req: ApiRequest, @Body() body: unknown) {
     const a = req.actor,
       input = z
         .strictObject({
-          purpose: z.enum(['learning', 'evidence']),
+          purpose: z.enum(['learning', 'evidence', 'practice', 'issue']),
+          assignment_id: z.uuid().optional(),
+          issue_id: z.uuid().optional(),
           instance_id: z.uuid().optional(),
           base64: z
             .string()
@@ -157,6 +203,24 @@ export class MediaController {
           mime: z.enum(['image/png', 'image/jpeg', 'image/webp']),
         })
         .parse(body);
+    if (
+      (input.purpose === 'practice') !== Boolean(input.assignment_id) ||
+      (input.purpose === 'issue') !== Boolean(input.issue_id)
+    )
+      throw new UnprocessableEntityException('Konteks bukti tidak valid.');
+    if (input.purpose === 'practice') {
+      if (!assessors(a)) throw new ForbiddenException();
+      const task = (
+        await this.db.query(
+          "SELECT t.membership_id FROM onboarding_assignments t JOIN memberships m ON m.tenant_id=t.tenant_id AND m.id=t.membership_id WHERE t.tenant_id=$1 AND t.id=$2 AND t.status<>'cancelled' AND m.active AND ($3 OR m.branch_id=ANY($4::uuid[]))",
+          [a.tenant_id, input.assignment_id, admins(a), a.scopes],
+        )
+      ).rows[0];
+      if (!task || task.membership_id === a.id) throw new ForbiddenException();
+    }
+    if (input.purpose === 'issue') {
+      await this.issueAccess(req, input.issue_id!);
+    }
     if (input.purpose === 'learning' && !admins(a) && a.role !== 'HR')
       throw new ForbiddenException();
     if (input.purpose === 'evidence') {
@@ -191,7 +255,7 @@ export class MediaController {
       checksum = createHash('sha256').update(normalized).digest('hex');
     await this.db.transaction(async (db) => {
       await db.query(
-        'INSERT INTO media_assets(id,tenant_id,owner_id,purpose,instance_id,mime,size,checksum,bytes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        'INSERT INTO media_assets(id,tenant_id,owner_id,purpose,instance_id,mime,size,checksum,bytes,assignment_id,issue_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
         [
           id,
           a.tenant_id,
@@ -202,6 +266,8 @@ export class MediaController {
           normalized.length,
           checksum,
           normalized,
+          input.assignment_id || null,
+          input.issue_id || null,
         ],
       );
       await audit(db, a, req.correlationId, 'media.created', id, {
