@@ -18,7 +18,7 @@ Status 17 Oktober 2026: implementasi dan verifikasi repository tersedia; penerim
 | FR-12 Notifikasi       | Sumber persisten, dedupe, reminder, retry/backoff, failed stream dan heartbeat                             |
 | FR-13 Audit            | Histori append-only, role/scope, session revoke, ekspor, penonaktifan dan perpindahan                      |
 
-Baseline CI d88f8f5: 79 integration tests, sembilan skenario browser (Chromium desktop/360 px dan WebKit mobile), axe, typecheck, formatting dan build lulus. Pengujian browser otomatis belum menggantikan UAT perangkat fisik. CI menjalankan suite PostgreSQL 16, profil 200 request serentak pada data 10.000 staf dan smoke test pg_dump/pg_restore termasuk byte gambar/checksum/trigger. Periksa status commit terbaru di GitHub Actions sebelum menggunakan image.
+Baseline CI [f91c6c9](https://github.com/nanjar/karyanesia/actions/runs/39001938095): 79 integration tests, 15 skenario browser (Chromium desktop/360 px dan WebKit mobile), axe, typecheck, formatting dan build lulus. Pengujian browser otomatis belum menggantikan UAT perangkat fisik. CI menjalankan suite PostgreSQL 16, profil 200 request serentak pada data 10.000 staf dan smoke test pg_dump/pg_restore termasuk byte gambar/checksum/trigger. Periksa status commit terbaru di GitHub Actions sebelum menggunakan image.
 
 ## Gate sebelum status 100% go-live
 
@@ -32,3 +32,7 @@ Baseline CI d88f8f5: 79 integration tests, sembilan skenario browser (Chromium d
 - [ ] Kebijakan retensi, pemberitahuan staf, hak akses dukungan dan pemrosesan data disetujui tenant; jangan mengaktifkan purge tanpa kebijakan.
 
 Runbook teknis: OPERATIONS-RUNBOOK.md. Gate ini membutuhkan akses dan keputusan pemilik lingkungan/perusahaan; repository dan tes sintetis tidak dapat menggantikan bukti tersebut.
+
+## Register pelaksanaan dan bukti
+
+Gunakan [RELEASE-EVIDENCE-v0.0.1.md](RELEASE-EVIDENCE-v0.0.1.md) untuk UAT PRD 1–14, matriks perangkat fisik, verifikasi server, arsip CI, issue dan persetujuan GO/NO-GO. Register memuat tautan artifact browser-qa beserta kedaluwarsanya. Seluruh UAT/produksi tetap belum diverifikasi sampai hasil aktual dan penanggung jawab dicatat.
