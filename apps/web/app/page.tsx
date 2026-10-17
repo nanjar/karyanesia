@@ -1052,6 +1052,12 @@ function ModalFrame({
     const previous = document.activeElement as HTMLElement | null;
     const dialog = ref.current;
     dialog?.showModal();
+    // React autoFocus runs while a closed dialog is inert. Focus after opening.
+    dialog
+      ?.querySelector<HTMLElement>(
+        'input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)',
+      )
+      ?.focus();
     return () => {
       dialog?.close();
       previous?.focus();

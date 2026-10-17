@@ -276,3 +276,5 @@ CI [fbcf310](https://github.com/nanjar/karyanesia/actions/runs/38924738293) lulu
 - Pemeriksaan axe WCAG A/AA dijalankan pada login, ringkasan, SOP/kendala, keterampilan, notifikasi dan dialog cabang; pemeriksaan overflow melengkapi audit viewport. Kelulusan baru terbukti setelah job browser pada CI selesai.
 - Data sintetis dibuat hanya pada database CI lokal kosong dengan kredensial acak per proyek browser. Laporan/screenshot/trace CI disimpan tujuh hari; berkas kredensial fixture tidak masuk Git maupun upload artifact.
 - WebKit emulasi bukan bukti Safari pada perangkat iOS fisik. UAT, pembaca layar, Android/4G dan gate operasional tetap diperlukan. Video tetap hanya tautan YouTube.
+
+- Putaran browser awal mendeteksi fokus awal dialog yang gagal pada Chromium dan WebKit: React autoFocus terjadi sebelum dialog dibuka. Modal kini memindahkan fokus ke kontrol formulir setelah showModal(); tes memeriksa fokus awal, Shift+Tab di dalam dialog, Escape dan pengembalian fokus. Pesan kegagalan jaringan juga diterjemahkan agar pengguna mendapat petunjuk mencoba ulang.
