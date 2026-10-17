@@ -3,22 +3,31 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../app/api';
 let ready: Promise<void> | null = null;
 function loadYouTube() {
-  if (!ready)
-    ready = new Promise((resolve, reject) => {
-      const win = window as any;
-      if (win.YT?.Player) {
-        resolve();
-        return;
-      }
-      win.onYouTubeIframeAPIReady = resolve;
-      const script = document.createElement('script');
-      script.src = 'https://www.youtube.com/iframe_api';
-      script.onerror = () => {
+  if (ready) return ready;
+  const win = window as any;
+  if (win.YT?.Player) return Promise.resolve();
+  ready = new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    let settled = false;
+    const finish = (failed: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      script.onerror = null;
+      if (win.onYouTubeIframeAPIReady === onReady) delete win.onYouTubeIframeAPIReady;
+      if (failed) {
+        script.remove();
         ready = null;
         reject(new Error('YouTube tidak dapat dimuat.'));
-      };
-      document.head.appendChild(script);
-    });
+      } else resolve();
+    };
+    const onReady = () => finish(!win.YT?.Player);
+    const timeout = setTimeout(() => finish(true), 15000);
+    win.onYouTubeIframeAPIReady = onReady;
+    script.src = 'https://www.youtube.com/iframe_api';
+    script.onerror = () => finish(true);
+    document.head.appendChild(script);
+  });
   return ready;
 }
 export function YouTubePlayer({
@@ -34,9 +43,12 @@ export function YouTubePlayer({
     revision = useRef(0);
   const [active, setActive] = useState(false),
     [message, setMessage] = useState(''),
-    [error, setError] = useState(false);
+    [error, setError] = useState(false),
+    [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!active) return;
+    setError(false);
+    setMessage('Memuat video YouTube…');
     let disposed = false,
       player: any,
       timer: ReturnType<typeof setInterval> | undefined,
@@ -55,6 +67,7 @@ export function YouTubePlayer({
             ...(assignmentId ? { assignment_id: assignmentId } : {}),
           },
         );
+        if (disposed) return;
         revision.current = result.revision;
         if (!disposed) setMessage('Posisi video tersimpan.');
       } catch {
@@ -82,12 +95,12 @@ export function YouTubePlayer({
           playerVars: { playsinline: 1, start: progress.seconds, origin: window.location.origin },
           events: {
             onReady: () => {
-              if (!disposed)
-                setMessage(
-                  progress.seconds
-                    ? `Dilanjutkan dari detik ${progress.seconds}.`
-                    : 'Video siap diputar.',
-                );
+              if (disposed) return;
+              setMessage(
+                progress.seconds
+                  ? `Dilanjutkan dari detik ${progress.seconds}.`
+                  : 'Video siap diputar.',
+              );
               timer = setInterval(() => void save(), 15000);
             },
             onStateChange: (event: any) => {
@@ -114,8 +127,9 @@ export function YouTubePlayer({
       disposed = true;
       if (timer) clearInterval(timer);
       player?.destroy?.();
+      mount.current?.replaceChildren();
     };
-  }, [active, url, versionId, assignmentId]);
+  }, [active, url, versionId, assignmentId, attempt]);
   return (
     <div className="learning-video">
       <p>
@@ -125,6 +139,15 @@ export function YouTubePlayer({
       {!active && (
         <button type="button" className="secondary" onClick={() => setActive(true)}>
           Putar / lanjutkan video
+        </button>
+      )}
+      {active && error && (
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setAttempt((value) => value + 1)}
+        >
+          Coba muat video lagi
         </button>
       )}
       <div ref={mount} style={{ minHeight: active ? 240 : 0 }} />

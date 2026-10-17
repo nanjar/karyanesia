@@ -125,3 +125,55 @@ test('admin MFA login and branch dialog support keyboard and labels', async ({ p
   await expect(page.getByRole('button', { name: /Tambah cabang/i })).toBeFocused();
   await page.screenshot({ path: info.outputPath('admin-branches.png'), fullPage: true });
 });
+
+test('YouTube loads only on demand and blocked requests allow retry with transcript', async ({
+  page,
+}, info) => {
+  await login(page, fixture().projects[info.project.name].staff);
+  let requests = 0;
+  await page.route('https://www.youtube.com/**', async (route) => {
+    requests += 1;
+    await route.abort('failed');
+  });
+  await page
+    .getByRole('navigation', { name: 'Navigasi utama' })
+    .getByRole('button', { name: 'Materi & kuis', exact: true })
+    .click();
+  await page.getByRole('button', { name: /Video Uji Browser/ }).click();
+  await expect(
+    page.getByText('Transkrip uji tetap tersedia saat koneksi YouTube gagal.', { exact: true }),
+  ).toBeVisible();
+  expect(requests).toBe(0);
+  await page.getByRole('button', { name: 'Putar / lanjutkan video', exact: true }).click();
+  await expect(
+    page.getByText('Video tidak dapat dimuat. Transkrip tetap tersedia.', { exact: true }),
+  ).toBeVisible();
+  expect(requests).toBe(1);
+  await page.getByRole('button', { name: 'Coba muat video lagi', exact: true }).click();
+  await expect.poll(() => requests).toBe(2);
+  await expect(
+    page.getByRole('button', { name: 'Coba muat video lagi', exact: true }),
+  ).toBeVisible();
+  await page.unroute('https://www.youtube.com/**');
+  await page.route('https://www.youtube.com/**', async (route) => {
+    requests += 1;
+    await route.fulfill({
+      contentType: 'application/javascript',
+      body: '// Synthetic API that never becomes ready.',
+    });
+  });
+  await page.clock.install();
+  await page.getByRole('button', { name: 'Coba muat video lagi', exact: true }).click();
+  await expect.poll(() => requests).toBe(3);
+  await page.clock.fastForward(15001);
+  await expect(
+    page.getByText('Video tidak dapat dimuat. Transkrip tetap tersedia.', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Coba muat video lagi', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Buka di YouTube', exact: true })).toHaveAttribute(
+    'href',
+    'https://www.youtube.com/watch?v=M7lc1UVf-VE',
+  );
+});

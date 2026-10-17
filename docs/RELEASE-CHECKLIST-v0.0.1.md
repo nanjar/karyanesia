@@ -18,7 +18,7 @@ Status 17 Oktober 2026: implementasi dan verifikasi repository tersedia; penerim
 | FR-12 Notifikasi       | Sumber persisten, dedupe, reminder, retry/backoff, failed stream dan heartbeat                             |
 | FR-13 Audit            | Histori append-only, role/scope, session revoke, ekspor, penonaktifan dan perpindahan                      |
 
-Verifikasi lokal terakhir: 79 integration tests, typecheck, formatting dan build. CI menjalankan suite PostgreSQL 16, profil 200 request serentak pada data 10.000 staf dan smoke test pg_dump/pg_restore termasuk byte gambar/checksum/trigger. Periksa status commit terbaru di GitHub Actions sebelum menggunakan image.
+Baseline CI d88f8f5: 79 integration tests, sembilan skenario browser (Chromium desktop/360 px dan WebKit mobile), axe, typecheck, formatting dan build lulus. Pengujian browser otomatis belum menggantikan UAT perangkat fisik. CI menjalankan suite PostgreSQL 16, profil 200 request serentak pada data 10.000 staf dan smoke test pg_dump/pg_restore termasuk byte gambar/checksum/trigger. Periksa status commit terbaru di GitHub Actions sebelum menggunakan image.
 
 ## Gate sebelum status 100% go-live
 

@@ -72,6 +72,31 @@ async function main() {
       }
       projects[name] = { ...accounts, secret, activation };
     }
+    const author = (
+      await db.query("SELECT id FROM memberships WHERE tenant_id=$1 AND role='OWNER' LIMIT 1", [
+        tenant,
+      ])
+    ).rows[0].id;
+    const content = {
+      title: 'Video Uji Browser',
+      objective: 'Memeriksa fallback video',
+      transcript: 'Transkrip uji tetap tersedia saat koneksi YouTube gagal.',
+      video_url: 'https://www.youtube.com/watch?v=M7lc1UVf-VE',
+      video_duration_seconds: 120,
+      pass_score: 80,
+      questions: [{ prompt: 'Transkrip tersedia?', options: ['Ya', 'Tidak'], correct: 0 }],
+    };
+    await db.query(
+      "INSERT INTO learning_versions(id,tenant_id,module_id,version,status,content,checksum,author_id,published_at) VALUES($1,$2,$3,1,'published',$4,$5,$6,now())",
+      [
+        randomUUID(),
+        tenant,
+        randomUUID(),
+        JSON.stringify(content),
+        digest(JSON.stringify(content)),
+        author,
+      ],
+    );
     await db.query('COMMIT');
     const folder = resolve('qa-artifacts');
     await mkdir(folder, { recursive: true, mode: 0o700 });

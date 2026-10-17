@@ -278,3 +278,9 @@ CI [fbcf310](https://github.com/nanjar/karyanesia/actions/runs/38924738293) lulu
 - WebKit emulasi bukan bukti Safari pada perangkat iOS fisik. UAT, pembaca layar, Android/4G dan gate operasional tetap diperlukan. Video tetap hanya tautan YouTube.
 
 - Putaran browser awal mendeteksi fokus awal dialog yang gagal pada Chromium dan WebKit: React autoFocus terjadi sebelum dialog dibuka. Modal kini memindahkan fokus ke kontrol formulir setelah showModal(); tes memeriksa fokus awal, Shift+Tab di dalam dialog, Escape dan pengembalian fokus. Pesan kegagalan jaringan juga diterjemahkan agar pengguna mendapat petunjuk mencoba ulang.
+
+### 6F — Pemulihan koneksi YouTube
+
+- Loader YouTube mempunyai batas tunggu 15 detik, pembersihan skrip gagal dan tombol coba lagi. Transkrip serta tautan YouTube tetap tersedia. Respons penyimpanan dari player yang sudah ditutup tidak dapat mengubah revision konteks baru.
+- Suite browser diperluas menjadi 12 skenario dengan materi sintetis: tidak menghubungi YouTube sebelum klik, kegagalan skrip, retry dan API yang tidak pernah siap. Semua permintaan YouTube pada skenario ini diintersep, tanpa mengunduh video. Ini bukan bukti pemutaran konten YouTube nyata pada perangkat pilot.
+- Bukti baseline sebelumnya: CI d88f8f5 (run 38999608467) lulus 79 integration tests dan sembilan skenario browser, termasuk axe, viewport, MFA dan fokus dialog.
