@@ -96,7 +96,7 @@ export function OperationsPanel({
     if (!detail) return;
     const reason = ['draft', 'submit'].includes(action)
       ? undefined
-      : (await ask('Alasan (minimal 10 karakter)')) || undefined;
+      : (await ask('Alasan')) || undefined;
     if (!['draft', 'submit'].includes(action) && !reason) return;
     if (action === 'submit' && !(await ask('Ajukan checklist untuk diperiksa?', false))) return;
     await run(async () => {
@@ -269,7 +269,7 @@ export function OperationsPanel({
                 className="secondary"
                 disabled={busy}
                 onClick={async () => {
-                  const reason = await ask('Alasan menghentikan jadwal (minimal 10 karakter)');
+                  const reason = await ask('Alasan menghentikan jadwal');
                   if (reason)
                     void run(async () => {
                       await api(`sop-schedules/${s.id}/stop`, 'POST', { reason });
@@ -393,7 +393,7 @@ export function OperationsPanel({
                         className="secondary"
                         onClick={async () => {
                           const description = await ask(
-                            'Uraikan kendala (minimal 10 karakter)',
+                            'Uraikan kendala',
                           );
                           if (description)
                             void run(async () => {
