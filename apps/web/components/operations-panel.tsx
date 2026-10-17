@@ -26,6 +26,14 @@ export function OperationsPanel({
   actor: { id: string; role: string };
   onError: (e: Error) => void;
 }) {
+  const [request, setRequest] = useState<{ title: string; text: boolean; resolve: (value: string | null) => void } | null>(null);
+  function ask(title: string, text = true): Promise<string | null> {
+    return new Promise((resolve) => setRequest({ title, text, resolve }));
+  }
+  function finishRequest(value: string | null) {
+    request?.resolve(value);
+    setRequest(null);
+  }
   const issueKeys = useRef(new Map<string, string>());
   const admin = ['OWNER', 'ADMIN', 'OPERATIONS'].includes(actor.role);
   const [tasks, setTasks] = useState<Row[]>([]),
@@ -88,9 +96,9 @@ export function OperationsPanel({
     if (!detail) return;
     const reason = ['draft', 'submit'].includes(action)
       ? undefined
-      : window.prompt('Alasan (minimal 10 karakter)') || undefined;
+      : (await ask('Alasan (minimal 10 karakter)')) || undefined;
     if (!['draft', 'submit'].includes(action) && !reason) return;
-    if (action === 'submit' && !window.confirm('Ajukan checklist untuk diperiksa?')) return;
+    if (action === 'submit' && !(await ask('Ajukan checklist untuk diperiksa?', false))) return;
     await run(async () => {
       await api(`sop-instances/${detail.id}/events`, 'POST', {
         key: crypto.randomUUID(),
@@ -104,6 +112,7 @@ export function OperationsPanel({
   }
   return (
     <section className="learning-panel sop-panel">
+      {request && <OperationDialog title={request.title} text={request.text} onFinish={finishRequest} />}
       <p className="alert">
         Untuk kondisi mendesak, segera hubungi supervisor atau kontak darurat internal perusahaan.
         Pelaporan di sini bukan layanan tanggap darurat.
@@ -259,8 +268,8 @@ export function OperationsPanel({
                 type="button"
                 className="secondary"
                 disabled={busy}
-                onClick={() => {
-                  const reason = window.prompt('Alasan menghentikan jadwal (minimal 10 karakter)');
+                onClick={async () => {
+                  const reason = await ask('Alasan menghentikan jadwal (minimal 10 karakter)');
                   if (reason)
                     void run(async () => {
                       await api(`sop-schedules/${s.id}/stop`, 'POST', { reason });
@@ -382,8 +391,8 @@ export function OperationsPanel({
                       <button
                         type="button"
                         className="secondary"
-                        onClick={() => {
-                          const description = window.prompt(
+                        onClick={async () => {
+                          const description = await ask(
                             'Uraikan kendala (minimal 10 karakter)',
                           );
                           if (description)
@@ -548,5 +557,50 @@ export function OperationsPanel({
         />
       </section>
     </section>
+  );
+}
+
+function OperationDialog({ title, text, onFinish }: {
+  title: string;
+  text: boolean;
+  onFinish: (value: string | null) => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [value, setValue] = useState('');
+  const [error, setError] = useState('');
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const element = dialog.current;
+    element?.showModal();
+    element?.querySelector<HTMLElement>('textarea, button')?.focus();
+    return () => { element?.close(); previous?.focus(); };
+  }, []);
+  return (
+    <dialog ref={dialog} className="modal" aria-labelledby="operation-dialog-title"
+      onCancel={(event) => { event.preventDefault(); onFinish(null); }}>
+      <div className="modal-inner">
+        <h2 id="operation-dialog-title">{title}</h2>
+        <form noValidate onSubmit={(event) => {
+          event.preventDefault();
+          if (text && value.trim().length < 10) {
+            setError('Isi minimal 10 karakter.');
+            return;
+          }
+          onFinish(text ? value.trim() : 'confirmed');
+        }}>
+          {text && <label>Uraian
+            <textarea value={value} maxLength={2000}
+              aria-describedby="operation-dialog-help" aria-invalid={!!error}
+              onChange={(event) => { setValue(event.target.value); setError(''); }} />
+            <small id="operation-dialog-help">Minimal 10, maksimal 2.000 karakter.</small>
+          </label>}
+          {error && <p className="alert error" role="alert">{error}</p>}
+          <div className="form-actions">
+            <button type="button" className="secondary" onClick={() => onFinish(null)}>Batal</button>
+            <button className="primary" type="submit">{text ? 'Kirim' : 'Konfirmasi'}</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
   );
 }
