@@ -37,3 +37,5 @@ npm run dev:web
 ```
 
 Tidak ada password default. Seluruh pengembangan dan source code Karyanesia dikelola di repository ini. Target pilot serta model komersial pada PRD masih merupakan asumsi perencanaan.
+
+Panduan instalasi VPS/Ubuntu dan pengaturan port: [DEPLOY-UBUNTU.md](docs/DEPLOY-UBUNTU.md).

@@ -261,3 +261,11 @@ CI [fbcf310](https://github.com/nanjar/karyanesia/actions/runs/38924738293) lulu
 - Konfigurasi trust proxy eksplisit (default tidak percaya forwarding header); reset identitas bersama beberapa tenant ditolak agar admin satu perusahaan tidak membatalkan kredensial perusahaan lain.
 - Validasi lokal: 79 integration tests, typecheck, format dan production build lulus. Load smoke PGlite terakhir: p95 573 ms, 10 tenant × 1.000 staf, 200 request serentak (80% baca / 20% tulis). Hasil ini hanya lingkungan pengembangan. CI berikutnya memverifikasi PostgreSQL 16 dan restore ulang.
 - Gate go-live eksternal tetap terbuka: persetujuan konten/kebijakan tenant, UAT pengguna, audit browser/aksesibilitas, konfigurasi server/TLS/monitoring serta backup offsite dan latihan restore pada host tujuan. Lihat RELEASE-CHECKLIST-v0.0.1.md; jangan menyamakan kelulusan CI dengan 100% penerimaan produksi.
+
+### 6D — Kesiapan startup Docker (17 Oktober 2026)
+
+- Port host web/API/PostgreSQL dapat diatur lewat WEB_PORT/API_PORT/POSTGRES_PORT; binding tetap loopback dan port internal tidak berubah.
+- Service migrate satu kali menjadi prasyarat API/worker/bootstrap; web menunggu API sehat. Migration checksum dan advisory lock tetap berlaku.
+- Health check API memeriksa endpoint/database; worker memeriksa heartbeat persisten; web memeriksa HTTP frontend. Runtime files dimiliki pengguna node agar container tidak bergantung pada akses tulis root.
+- Ditambahkan panduan DEPLOY-UBUNTU.md dan job CI Docker smoke: build dua image, startup dengan migrasi, health API/web/worker, rewrite web→API dan pengulangan migrasi. ClamAV nyata tidak dijalankan pada smoke test ini; signature/kapasitas engine tetap gate deployment.
+- Perubahan ini menyiapkan konfigurasi dan bukti CI, bukan menyatakan aplikasi telah di-deploy ke server pengguna.

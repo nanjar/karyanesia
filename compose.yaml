@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: karyanesia
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
-      - '127.0.0.1:5432:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,6 +15,18 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+  migrate:
+    image: karyanesia-api:local
+    command: [node, apps/api/dist/migrate.js]
+    environment:
+      DATABASE_URL: postgresql://karyanesia:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/karyanesia
+      WEB_ORIGIN: ${WEB_ORIGIN:?Set WEB_ORIGIN}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY}
+      NODE_ENV: ${NODE_ENV:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
   api:
     image: karyanesia-api:local
     build:
@@ -29,10 +41,16 @@ services:
       CLAMAV_HOST: clamav
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
     ports:
-      - '127.0.0.1:4000:4000'
+      - '127.0.0.1:${API_PORT:-4000}:4000'
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, node, apps/api/dist/healthcheck.js, api]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
   worker:
     image: karyanesia-api:local
@@ -43,8 +61,14 @@ services:
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY}
       NODE_ENV: ${NODE_ENV:-development}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, node, apps/api/dist/healthcheck.js, worker]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
     restart: unless-stopped
   clamav:
     image: clamav/clamav:stable
@@ -66,8 +90,8 @@ services:
       BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-}
     command: [node, apps/api/dist/bootstrap.js]
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
   web:
     build:
       context: .
@@ -75,9 +99,22 @@ services:
       args:
         API_INTERNAL_URL: http://api:4000
     ports:
-      - '127.0.0.1:3000:3000'
+      - '127.0.0.1:${WEB_PORT:-3000}:3000'
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 volumes:
   postgres_data:

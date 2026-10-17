@@ -9,8 +9,8 @@ RUN npm run build -w @karyanesia/api
 FROM node:22-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
 COPY packages/database/migrations ./packages/database/migrations
 USER node
 EXPOSE 4000
