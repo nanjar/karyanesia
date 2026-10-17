@@ -37,6 +37,8 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:?Set WEB_ORIGIN}
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY}
       NODE_ENV: ${NODE_ENV:-development}
+      DEMO: ${DEMO:-false}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       PORT: '4000'
       CLAMAV_HOST: clamav
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}

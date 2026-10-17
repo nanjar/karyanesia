@@ -108,3 +108,49 @@ Backup offsite, alarm, retensi, UAT, uji browser, dan latihan restore host tujua
 - Upload 413: periksa batas request reverse proxy (base64 menambah ukuran transfer).
 - Upload 503: periksa kesiapan signature/engine ClamAV; jangan menonaktifkan pemindaian untuk meloloskan upload.
 - Worker unhealthy: periksa database, migrasi, log worker dan operations-health; jangan menandai sehat secara manual.
+
+## Demo lokal melalui environment
+
+Untuk mencoba aplikasi dengan data fiktif, isi `.env` secara privat:
+
+```dotenv
+NODE_ENV=development
+DEMO=true
+DEMO_PASSWORD=ISI_PASSWORD_PRIVAT_MINIMAL_12_KARAKTER
+```
+
+Ganti nilai contoh password. `DEMO` hanya menerima `true` atau `false` (huruf kecil), default `false`. Mode demo ditolak di luar `NODE_ENV=development`. Jangan mengaktifkannya pada instalasi produksi meskipun lingkungan diberi nama development.
+
+Setelah konfigurasi dan port siap:
+
+```bash
+git pull --ff-only origin main
+docker compose build api web
+docker compose up -d postgres migrate api web worker clamav
+docker compose ps -a
+```
+
+API mengisi demo sebelum menerima request, setelah migrasi Docker selesai. Seed membuat tenant `karyanesia-demo` terpisah: dua cabang fiktif, satu jabatan, tujuh akun (OWNER, ADMIN, HR, OPERATIONS, SUPERVISOR, dua STAFF), materi YouTube + dua soal kuis, rubrik praktik, jalur onboarding dan dua penugasan, template SOP dan dua tugas SOP pada tanggal pertama seed (Asia/Jakarta). Tidak ada nilai lulus atau penilaian praktik palsu. Video hanya tautan contoh pemutar YouTube; bukan SOP yang disetujui. Durasi 120 detik merupakan metadata fixture, belum verifikasi durasi/ketersediaan video nyata.
+
+Semua akun demo memakai password privat `DEMO_PASSWORD`. Nomor pegawai: `DEMO-OWNER`, `DEMO-ADMIN`, `DEMO-HR`, `DEMO-OPS`, `DEMO-SPV`, `DEMO-STAFF-01`, `DEMO-STAFF-02`. OWNER/ADMIN tetap memerlukan MFA. Untuk mengambil URI pendaftaran authenticator dan rincian login dari container API:
+
+```bash
+(umask 077; docker compose cp api:/tmp/karyanesia-demo-access.json .env.demo-access.json)
+chmod 600 .env.demo-access.json
+```
+
+Baca file itu secara lokal untuk mendaftarkan MFA OWNER/ADMIN. File berisi password dan secret pendaftaran: jangan kirim ke chat, screenshot atau repository. Nama `.env.demo-access.json` sudah diabaikan oleh `.gitignore`. File dalam container berizin 0600; setelah menyalin, pastikan salinan host tetap privat. Jangan memakai akun demo untuk data nyata.
+
+Seed berjalan dalam satu transaksi dan mengambil advisory lock: restart tidak menggandakan akun/konten/tugas, mereset password/MFA, atau mengubah progres pengguna. Tenant yang kebetulan memakai kode sama tanpa marker seed ditolak. Password yang berbeda dari akun demo yang sudah ada juga ditolak tanpa mereset akun. Jika password akun demo diubah melalui aplikasi, nonaktifkan demo sebelum restart. Tugas SOP demo hanya untuk tanggal seed pertama; untuk hari lain buat jadwal baru lewat UI.
+
+Untuk melewati seed pada startup berikutnya:
+
+```dotenv
+DEMO=false
+```
+
+```bash
+docker compose up -d api
+```
+
+**`DEMO=false` menghentikan proses seed, bukan menghapus atau menyembunyikan tenant demo yang sudah tersimpan.** Akun dan data yang ada tetap dapat digunakan. Untuk instalasi tanpa data demo, gunakan database/volume baru yang terpisah; jangan menghapus volume instalasi yang sudah berisi data. Tidak ada purge demo otomatis.

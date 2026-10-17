@@ -5,6 +5,7 @@ export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
 export MFA_ENCRYPTION_KEY="$(openssl rand -hex 32)"
 export WEB_ORIGIN=http://localhost
 export NODE_ENV=development
+export DEMO=false
 export WEB_PORT=0 API_PORT=0 POSTGRES_PORT=0
 if [[ "${RUN_BROWSER_TESTS:-0}" = 1 ]]; then
   export WEB_PORT="$(node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close();});')"
@@ -28,4 +29,17 @@ if [[ "${RUN_BROWSER_TESTS:-0}" = 1 ]]; then
   CI=true BROWSER_TEST_MODE=synthetic-ci DATABASE_URL="postgresql://karyanesia:$POSTGRES_PASSWORD@$database_address/karyanesia" node --import tsx scripts/browser-seed.ts
   PLAYWRIGHT_BASE_URL="http://$web_address" npx playwright test --config apps/web/playwright.config.ts
 fi
+# Verify the real API startup hook with DEMO=true, without printing credentials.
+export DEMO=true
+export DEMO_PASSWORD="$(openssl rand -hex 24)"
+docker compose up -d --wait --wait-timeout 120 api web
+docker compose exec -T api node -e '
+const fs=require("fs");
+const p="/tmp/karyanesia-demo-access.json";
+const a=JSON.parse(fs.readFileSync(p,"utf8"));
+if((fs.statSync(p).mode & 0o777)!==0o600 || a.accounts.length!==7)process.exit(1);
+fetch("http://127.0.0.1:4000/api/v1/auth/login",{
+method:"POST",headers:{"Content-Type":"application/json",Origin:process.env.WEB_ORIGIN},
+body:JSON.stringify({company_code:a.tenant_code,employee_number:"DEMO-STAFF-01",password:a.password})
+}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1));'
 printf 'Docker smoke passed: migrations, API, worker heartbeat, web and API rewrite.\n'
