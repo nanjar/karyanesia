@@ -202,15 +202,19 @@ function Auth({ onLogin, initialError }: { onLogin: (a: Actor) => void; initialE
             </label>
             {!activate && (
               <label>
-                Kode autentikator <small>(wajib untuk admin)</small>
+                Kode autentikator <small>(jika MFA aktif)</small>
                 <input
                   name="otp"
+                  aria-describedby="otp-help"
                   inputMode="numeric"
                   pattern="[0-9]{6}"
                   maxLength={6}
                   autoComplete="one-time-code"
-                  placeholder="6 digit"
+                  placeholder="6 digit dari aplikasi autentikator"
                 />
+                <small id="otp-help">
+                  Kosongkan jika akun Anda tidak menggunakan MFA. Pemilik dan Admin wajib mengisi kode ini.
+                </small>
               </label>
             )}
             <button className="primary" disabled={busy}>
