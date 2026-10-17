@@ -269,3 +269,10 @@ CI [fbcf310](https://github.com/nanjar/karyanesia/actions/runs/38924738293) lulu
 - Health check API memeriksa endpoint/database; worker memeriksa heartbeat persisten; web memeriksa HTTP frontend. Runtime files dimiliki pengguna node agar container tidak bergantung pada akses tulis root.
 - Ditambahkan panduan DEPLOY-UBUNTU.md dan job CI Docker smoke: build dua image, startup dengan migrasi, health API/web/worker, rewrite web→API dan pengulangan migrasi. ClamAV nyata tidak dijalankan pada smoke test ini; signature/kapasitas engine tetap gate deployment.
 - Perubahan ini menyiapkan konfigurasi dan bukti CI, bukan menyatakan aplikasi telah di-deploy ke server pengguna.
+
+### 6E — Pengujian browser otomatis (17 Oktober 2026)
+
+- Ditambahkan sembilan skenario Playwright: aktivasi dan navigasi staf/logout, kegagalan jaringan dan login lewat keyboard, serta MFA admin dan dialog cabang. Matriks mencakup Chromium desktop, Chromium 360 px dan emulasi mobile WebKit.
+- Pemeriksaan axe WCAG A/AA dijalankan pada login, ringkasan, SOP/kendala, keterampilan, notifikasi dan dialog cabang; pemeriksaan overflow melengkapi audit viewport. Kelulusan baru terbukti setelah job browser pada CI selesai.
+- Data sintetis dibuat hanya pada database CI lokal kosong dengan kredensial acak per proyek browser. Laporan/screenshot/trace CI disimpan tujuh hari; berkas kredensial fixture tidak masuk Git maupun upload artifact.
+- WebKit emulasi bukan bukti Safari pada perangkat iOS fisik. UAT, pembaca layar, Android/4G dan gate operasional tetap diperlukan. Video tetap hanya tautan YouTube.

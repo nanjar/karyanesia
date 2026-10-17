@@ -40,8 +40,26 @@ jobs:
   docker-smoke:
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Build and verify Docker services
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck:e2e -w @karyanesia/web
+      - run: npx playwright install --with-deps chromium webkit
+      - name: Build and verify Docker services and browser flows
         run: bash scripts/docker-smoke.sh
+        env:
+          RUN_BROWSER_TESTS: '1'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-qa
+          path: |
+            qa-artifacts/playwright-report
+            qa-artifacts/test-results
+          retention-days: 7
+          if-no-files-found: ignore

@@ -277,3 +277,9 @@ Worker memakai PostgreSQL durable queue sebagai pengganti usulan Redis/BullMQ; g
 ### Bukti praktik dan lampiran kendala
 
 Terapkan seluruh migrasi hingga 020. `POST /media` juga menerima `purpose=practice` + `assignment_id` untuk penilai yang berwenang, atau `purpose=issue` + `issue_id` untuk pengguna yang dapat mengakses kendala. Referensi bukti `{asset_id,alt}` (maksimal lima) dapat disertakan pada POST penilaian praktik. Histori penilaian mengembalikan evidence; peserta dapat membaca gambar setelah penilaian disahkan. `POST /issues/:id/attachments` menerima `{asset_id,alt}` milik pengunggah yang terikat kendala tersebut; retry referensi sama tidak menggandakan record. Kendala tertutup harus dibuka kembali untuk bukti baru. Semua byte gambar tetap melalui pemeriksaan/normalisasi dan pemindaian privat yang sama.
+
+## Browser QA
+
+CI menjalankan `npm run typecheck:e2e -w @karyanesia/web`, memasang Chromium/WebKit, lalu `RUN_BROWSER_TESTS=1 bash scripts/docker-smoke.sh`. Gunakan hanya pada mesin Docker pengembangan terisolasi: script membuat database sintetis sementara dan menghapus volume proyek smoke ketika selesai. Seed menolak database berisi tenant.
+
+Laporan tersedia pada artifact `browser-qa` di GitHub Actions. Sembilan skenario mencakup aktivasi, login keyboard/error jaringan, navigasi staf, MFA admin, dialog, axe dan overflow viewport. Fixture `qa-artifacts/browser-fixture.json` mengandung kredensial sementara dan tidak boleh dibagikan; artifact CI hanya mengunggah direktori laporan dan hasil tes. Hasil otomatis tidak menggantikan UAT perangkat fisik dan pembaca layar.
